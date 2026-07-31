@@ -62,7 +62,23 @@ export const PLAN: readonly PlannedSurface[] = [
       'around. Two elements only: the ridge and the flame.',
   },
 
-  /* ---- tier 2: the five products, in switcher order, then Hub --------------------------- */
+  /* ---- tier 2: the six products, in switcher order, then Hub ---------------------------- */
+  {
+    key: 'foresight',
+    name: 'Forge Foresight',
+    accent: '#1e89c7',
+    tier: 2,
+    kinds: FULL,
+    // A prediction market is a claim about which of two futures happens, so the mark is the
+    // moment before it is settled: one path arriving, two leaving, and no indication of which
+    // wins. The solid/broken pair carries the difference without colour, which matters more here
+    // than elsewhere — this accent is dE 7-8 from trade's teal under deuteranopia.
+    idea:
+      'a single straight line rising from the ash ridge to a solid round node, and from that ' +
+      'node two straight lines diverging upward at equal angles — the left one solid, the right ' +
+      'one drawn as three short dashes. Three elements only: the arriving line, the node, and ' +
+      'the two diverging branches. The ash ridge is the flat baseline the first line stands on.',
+  },
   {
     key: 'network',
     name: 'Forge Network',

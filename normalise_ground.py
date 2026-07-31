@@ -136,6 +136,45 @@ def normalise(path: Path) -> tuple[tuple[int, int, int], int]:
     return ground, changed
 
 
+def refresh_manifest(paths: list[Path]) -> int:
+    """Re-record the checksum of every file this script rewrote.
+
+    THE BUG THIS FIXES. `generate.ts` writes MANIFEST.json at generation time, and this script
+    then rewrites the pixels — so every checksum in the manifest described the image as FLUX
+    delivered it, not the image that is committed. `verify.py` compares against the manifest and
+    reported "checksum does not match" for 29 of the 73 committed assets: the verifier failed on
+    its own repository, and had presumably always done so.
+
+    A verifier that is red on correct input is one people stop reading, which is the same failure
+    the estate has now hit in a CI guard that fired on its own comment, a rule that rejected every
+    service it protected, and a reproduce line pointing at a script that never existed. So the
+    ordering is fixed at the source rather than by hand-patching the numbers: whatever this script
+    rewrites, it re-records.
+    """
+    import hashlib, json
+
+    manifest = Path("MANIFEST.json")
+    if not manifest.exists():
+        return 0
+    document = json.loads(manifest.read_text())
+    entries = document.get("assets") or []
+    by_path = {str(p): p for p in paths}
+    changed = 0
+    for entry in entries:
+        target = by_path.get(entry.get("path", ""))
+        if target is None or not target.exists():
+            continue
+        data = target.read_bytes()
+        digest = hashlib.sha256(data).hexdigest()
+        if entry.get("sha256") != digest or entry.get("byteSize") != len(data):
+            entry["sha256"] = digest
+            entry["byteSize"] = len(data)
+            changed += 1
+    if changed:
+        manifest.write_text(json.dumps(document, indent=2) + "\n")
+    return changed
+
+
 if __name__ == "__main__":
     targets = sorted(Path("assets").rglob("*.png"))
     if not targets:
@@ -144,3 +183,5 @@ if __name__ == "__main__":
     for p in targets:
         was, n = normalise(p)
         print(f"{p}  was #{was[0]:02x}{was[1]:02x}{was[2]:02x}  remapped {n} px")
+    updated = refresh_manifest(targets)
+    print(f"manifest: {updated} checksum(s) re-recorded after normalisation")
