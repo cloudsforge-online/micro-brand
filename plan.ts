@@ -235,7 +235,10 @@ export const PLAN: readonly PlannedSurface[] = [
     name: 'Developer Platform',
     accent: '#4a86e0',
     tier: 3,
-    kinds: ['mark', 'favicon', 'wordmark'],
+    // `og` added: micro-devportal-web is a PUBLIC surface — the developer console and the docs —
+    // so its links get shared, and a shared link with no card renders as a bare URL. The operator
+    // tools below keep TOOL (mark + favicon) because nobody shares an admin console link outward.
+    kinds: ['mark', 'favicon', 'wordmark', 'og'],
     idea:
       'a square lattice: two evenly spaced vertical bars crossed by two evenly spaced horizontal ' +
       'bars, forming a nine-cell grid whose outer bars overshoot the crossings slightly, held ' +
