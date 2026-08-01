@@ -3,6 +3,11 @@ name: CI
 # A content repository: no service, no suite, no image. What CI owes it is the one check that
 # guards the failure that cannot be undone — a committed secret is compromised the moment it
 # lands, whatever kind of repository it lands in.
+#
+# And, since it has one, the repository's own verifier. `verify.py` existed and passed and was
+# never run by anything but a person: that is how 54 entries came to ship claiming a C2PA box the
+# bytes had not carried since the ground-normalisation commit. A manifest is a claim about files,
+# and a claim nothing re-checks is a claim that drifts the first time the files move.
 
 on:
   push:
@@ -17,3 +22,18 @@ jobs:
       require-dockerignore: false
     permissions:
       contents: read
+
+  manifest:
+    name: verify.py
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      # Pillow is the only dependency, and only for decoding. `normalise_ground.py` is deliberately
+      # pure standard library so it can run anywhere; the verifier reads pixels and cannot be.
+      - run: python3 -m pip install --disable-pip-version-check --quiet pillow
+      - run: python3 verify.py
