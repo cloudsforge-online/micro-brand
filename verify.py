@@ -6,13 +6,22 @@ does not reliably tell you that a ground is #2b2b2d rather than #12100f, or that
 drifted twenty degrees of hue — the eye adapts, and a set of eleven surfaces adapts it eleven
 times. So the measurable things are measured here and the rest is done by looking.
 
-Four checks per asset:
+Five checks per asset:
 
   1. **Dimensions.** The bytes must measure exactly what the manifest declares. This is the check
      the estate currently fails silently — design-system.md section 7 item 3, twelve game masters
      at 1024 against a declared 512.
   2. **Checksum.** The file on disk must be the file the manifest recorded. A manifest that has
      drifted from its artefacts is worse than no manifest.
+  2a. **Disclosure.** The manifest's `c2pa` flag must be what the bytes actually say. Added after
+     the check that was missing let 54 of the 93 entries ship claiming `c2pa: true` with no C2PA
+     box in the file: `normalise_ground.py` rewrites the ground pixels, its PNG writer keeps no
+     ancillary chunk, and the first version of its `refresh_manifest` re-recorded the checksum but
+     not the disclosure. Nothing here was measuring the one field that had gone stale, so the
+     verifier stayed green while the repository asserted provenance it no longer carried — the
+     exact thing README.md section 4 says is worse than admitting the loss. This check is about
+     TRUTH, not about presence: an asset is free to have no C2PA box, and every derivative
+     legitimately does not. It may not say otherwise.
   3. **Ground.** Sampled from the four corners, which no composition puts a mark in. Must be dark:
      the system is dark-only and has no light mode. Reported as a hex and as a distance from
      #12100f, because "it came back taupe" was a real outcome on the first live image of this run.
@@ -210,6 +219,14 @@ def main(argv: list[str]) -> int:
         data = path.read_bytes()
         if hashlib.sha256(data).hexdigest() != asset["sha256"]:
             problems.append("checksum does not match the manifest")
+
+        # The same marker generate.ts reads, and read the same way: off the bytes on disk.
+        carries_c2pa = b"c2pa" in data
+        if carries_c2pa != asset["c2pa"]:
+            problems.append(
+                f'manifest says c2pa={asset["c2pa"]} and the bytes say {carries_c2pa} — '
+                "the disclosure must be measured, never inherited"
+            )
 
         with Image.open(path) as raw:
             image = raw.convert("RGB")

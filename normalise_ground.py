@@ -137,7 +137,7 @@ def normalise(path: Path) -> tuple[tuple[int, int, int], int]:
 
 
 def refresh_manifest(paths: list[Path]) -> int:
-    """Re-record the checksum of every file this script rewrote.
+    """Re-record the checksum, size and C2PA state of every file this script rewrote.
 
     THE BUG THIS FIXES. `generate.ts` writes MANIFEST.json at generation time, and this script
     then rewrites the pixels — so every checksum in the manifest described the image as FLUX
@@ -150,6 +150,16 @@ def refresh_manifest(paths: list[Path]) -> int:
     service it protected, and a reproduce line pointing at a script that never existed. So the
     ordering is fixed at the source rather than by hand-patching the numbers: whatever this script
     rewrites, it re-records.
+
+    **`c2pa` IS PART OF "WHATEVER THIS SCRIPT REWRITES", AND IT WAS MISSED.** The first version of
+    this function re-recorded `sha256` and `byteSize` only. `_write` below rebuilds the PNG from
+    IHDR/IDAT/IEND and keeps no ancillary chunk, so the C2PA box goes the same way the checksum
+    does — and it *has* to, because a C2PA manifest is bound to the pixels this script deliberately
+    changes. Losing it on a ground snap is correct; leaving 54 entries still claiming `c2pa: true`
+    was not. `verify.py` measured dimensions, checksum, ground and accent and never the disclosure,
+    so the whole set shipped asserting provenance it no longer carried — which README.md §4 itself
+    calls worse than admitting the loss. Both the re-record here and the check in `verify.py` exist
+    so that cannot recur silently.
     """
     import hashlib, json
 
@@ -166,9 +176,16 @@ def refresh_manifest(paths: list[Path]) -> int:
             continue
         data = target.read_bytes()
         digest = hashlib.sha256(data).hexdigest()
-        if entry.get("sha256") != digest or entry.get("byteSize") != len(data):
+        # Read from the bytes written, never inherited from the vendor or from the previous entry.
+        c2pa = b"c2pa" in data
+        if (
+            entry.get("sha256") != digest
+            or entry.get("byteSize") != len(data)
+            or entry.get("c2pa") != c2pa
+        ):
             entry["sha256"] = digest
             entry["byteSize"] = len(data)
+            entry["c2pa"] = c2pa
             changed += 1
     if changed:
         manifest.write_text(json.dumps(document, indent=2) + "\n")
