@@ -47,6 +47,20 @@ const FULL: readonly PlannedKind[] = ['mark', 'favicon', 'wordmark', 'og', 'soci
  */
 const TOOL: readonly PlannedKind[] = ['mark', 'favicon']
 
+/**
+ * A PUBLIC surface that inherits its parent product's mark.
+ *
+ * `status` and `explorer` both carry `markId: null` in the registry — deliberately, because a
+ * status page is Beacon with its internals removed and an explorer is part of Forge Network, and
+ * neither should claim a mark of its own. But each is served from its OWN subdomain, and a browser
+ * tab and a shared link inherit nothing: a surface with no favicon shows the browser's blank page
+ * icon, and one with no `og` renders a shared link as a bare URL. That matters most for the status
+ * page, which is the surface people share during an incident.
+ *
+ * So: no mark, no wordmark — the parent owns those — and the two artefacts a separate host needs.
+ */
+const PUBLIC_CHILD: readonly PlannedKind[] = ['favicon', 'og']
+
 export const PLAN: readonly PlannedSurface[] = [
   /* ---- tier 1: the company ------------------------------------------------------------- */
   {
@@ -181,6 +195,40 @@ export const PLAN: readonly PlannedSurface[] = [
       'a beacon on the ridge: one solid dot on a short vertical mast, with two concentric arcs ' +
       'opening upward and outward from it as the signal it puts out, standing on the flat ash ' +
       'ridge.',
+  },
+  {
+    key: 'status',
+    name: 'Status',
+    // Beacon's green, from the registry: the status page IS Beacon, with its internals removed.
+    accent: '#7fae5c',
+    tier: 3,
+    kinds: PUBLIC_CHILD,
+    // Echoes Beacon's beacon-on-the-ridge deliberately — a reader who has seen one should
+    // recognise the other — but resolved to a single steady signal rather than a mast putting one
+    // out, because this surface reports a state rather than watching for one.
+    idea:
+      'one solid dot centred above the flat ash ridge with a single wide arc beneath it, like a ' +
+      'steady signal held above level ground. Two elements only: the dot and the one arc. No ' +
+      'mast, no second arc.',
+  },
+  {
+    key: 'explorer',
+    name: 'Network Explorer',
+    // Forge Network's accent, from the registry: the explorer is part of that product.
+    accent: '#d6412f',
+    tier: 3,
+    kinds: PUBLIC_CHILD,
+    // Network's mark is a flame on a hearthstone; this is the chain that flame secures, seen
+    // end-on — three linked blocks reading left to right, so the family is legible without
+    // repeating the flame the parent owns.
+    // Reworded once: the first phrasing was refused outright for content safety, with no fallback
+    // attempted. Nothing in it was objectionable — three squares and two bars — which is the point
+    // worth recording: a refusal is not always a signal about meaning, and the cheapest response to
+    // one is to say the same shape in plainer words rather than to argue with it.
+    idea:
+      'three equal outlined squares placed side by side above the flat ash ridge, evenly spaced, ' +
+      'the centre one filled. A short horizontal stroke sits between each pair of squares. ' +
+      'Simple flat geometry, nothing else in the frame.',
   },
   {
     key: 'developers',
