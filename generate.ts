@@ -1,64 +1,87 @@
 /**
- * The generation run. Drives `@cloudsforge/studio`'s own engine against the live FLUX 2 Pro
- * deployment and records the provenance the service's `generation_jobs` and `assets` tables record.
+ * The generation run, for any one of the three models in `providers.json`.
  *
- * ## Why this imports the service rather than reimplementing it
+ * ## What this run is now
  *
- * Every hard-won fact about this endpoint — `model` required in the body, the dotted spelling,
+ * It was a run against one model. It is now a run against ONE NAMED model, chosen with
+ * `--provider`, producing a set that sits beside the other two rather than replacing them. The
+ * reference set — FLUX 2 Pro, at `assets/` with its provenance in `MANIFEST.json` — is the shipped
+ * set and is not touched by a candidate run: a candidate writes only under its own root, so a
+ * half-finished Qwen run cannot leave the set twenty sibling repositories point at in a worse
+ * state than it found it.
+ *
+ * ## Why it imports the service rather than reimplementing it
+ *
+ * Every hard-won fact about the FLUX endpoint — `model` required in the body, the dotted spelling,
  * `aspect_ratio` accepted and ignored, dimensions floored to a multiple of 16, `output_format:png`
  * required, C2PA read from the bytes rather than assumed — is already encoded and unit-tested in
- * `studio/src/backend.ts`, `specs.ts`, `prompt.ts` and `sizing.ts`. A second copy of that
- * knowledge in this repository is a second place for it to rot. So the four modules are imported
- * verbatim and `studio/` is not modified.
+ * `studio/src/backend.ts`, `specs.ts`, `prompt.ts` and `sizing.ts`. A second copy of that knowledge
+ * here is a second place for it to rot. `backends.ts` adapts it to the provider interface; it does
+ * not restate it.
  *
- * ## Why it does not drive the HTTP service
+ * ## Prompt parity
  *
- * The service's route path additionally requires Postgres with migrations applied, a JWT issuer,
- * a per-account credit ledger with a spend cap, and the leased-job worker — the whole of which
- * exists so a MULTI-TENANT service can charge an account for an image and survive a rolling
- * deploy mid-generation. None of that has a job to do in a one-off, single-operator run of the
- * estate's own artwork, and standing it up would put a database between this run and the only
- * thing being tested, which is the art. The brief permits calling FLUX directly provided the same
- * provenance record is written; MANIFEST.json carries every column `generation_jobs` and `assets`
- * would have carried, including the failed attempts, and `licence` is imported from the service
- * so the string cannot drift.
+ * Once an asset has been generated once, EVERY provider replays the prompt that is on record for
+ * it — read out of the reference manifest, byte for byte, the reference provider included. Only an
+ * asset that has never been generated gets a freshly computed prompt, and only from the reference.
+ * Changing the question afterwards takes `--reprompt`, which is reference-only and makes the
+ * candidate sets for those assets stale until they are regenerated.
+ *
+ * See `prompts.ts`'s header for why that is stronger than all three runs calling the same function
+ * (the code no longer produces what 36 of the 54 recorded assets were generated from), and
+ * `verify.py` for the cross-set check that fails if two sets ever disagree.
  *
  * ## Usage
  *
- *   cd ../studio && node --import tsx ../brand/generate.ts            # everything missing
+ *   cd ../studio && node --import tsx ../brand/generate.ts --plan
+ *   cd ../studio && node --import tsx ../brand/generate.ts                       # the reference
+ *   cd ../studio && node --import tsx ../brand/generate.ts --provider qwen-image-2512
  *   cd ../studio && node --import tsx ../brand/generate.ts --only site:wordmark,hub:mark
  *   cd ../studio && node --import tsx ../brand/generate.ts --force --only site:wordmark
+ *   cd ../studio && node --import tsx ../brand/generate.ts --force --reprompt --only site:wordmark
  *
- * `--force` regenerates an asset that already exists and increments its recorded retry count;
- * that is the mechanism by which a wordmark with mangled lettering is replaced, and the count is
- * what makes "how many needed a retry" an answerable question months later.
+ * `--force` regenerates an asset that already exists and increments its recorded retry count; that
+ * is the mechanism by which a wordmark with mangled lettering is replaced, and the count is what
+ * makes "how many needed a retry" an answerable question months later — one of the six criteria in
+ * COMPARISON.md, and the only one that is free to collect.
  *
- * It is run from `studio/` so `tsx` resolves out of that workspace's `node_modules`. All paths
- * here are derived from `import.meta.dirname`, never from the working directory.
+ * **Resuming.** The manifest is written after every single asset and the work list is filtered
+ * against it, so an interrupted run resumes by being run again and regenerates nothing that
+ * already succeeded. That property is not a convenience here: an agent has already been killed
+ * mid-run in this estate with 134 generated images at stake, and on a Managed Compute deployment
+ * every re-run of an asset that was already fine is billed as deployment minutes.
+ *
+ * It is run from `studio/` so `tsx` resolves out of that workspace's `node_modules`. All paths here
+ * are derived from `import.meta.dirname`, never from the working directory.
  */
 
 import { readFile, mkdir, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { createHash } from 'node:crypto'
-import { join, dirname } from 'node:path'
+import { join } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 
-import { fluxBackend, ImageBackendError, type Attempt, type ImageRequest } from '../studio/src/backend.ts'
-import { buildPrompt } from '../studio/src/prompt.ts'
-import { requestSizeFor, specFor, sizeString, type AssetSpec } from '../studio/src/specs.ts'
 import { reportSizing } from '../studio/src/sizing.ts'
 import { GENERATED_LICENCE } from '../studio/src/assets.ts'
-import type { FluxConfig } from '../studio/src/env.ts'
 
+import {
+  backendFor,
+  ImageBackendError,
+  UnimplementedBackendError,
+  type Attempt,
+  type GenerationRequest,
+  type ProviderBackend,
+} from './backends.ts'
+import { PROVIDERS, REFERENCE, providerById, assetsDirOf, manifestPathOf, type Provider } from './providers.ts'
+import { identityFor, manifestKey, promptFor, promptForProvider } from './prompts.ts'
 import { PLAN, plannedAssets, type PlannedKind, type PlannedSurface } from './plan.ts'
 import { SURFACES } from '../ui/packages/ui/src/surfaces.ts'
 
 const run = promisify(execFile)
 
 const HERE = import.meta.dirname
-const ASSETS = join(HERE, 'assets')
-const MANIFEST = join(HERE, 'MANIFEST.json')
+const PLAN_JSON = join(HERE, 'PLAN.json')
 const ENV_FILE = join(HERE, '..', 'studio', '.env.local')
 
 /* ------------------------------------------------------------------ configuration */
@@ -68,7 +91,8 @@ const ENV_FILE = join(HERE, '..', 'studio', '.env.local')
  *
  * Deliberately not `dotenv`: this is fifteen lines, and the dependency would be the only one in
  * this repository. Values are never echoed — not on success, not in an error, not in a summary
- * line — because the Foundry key is a spend credential.
+ * line — because every key in that file is a spend credential, and the two Managed Compute
+ * deployments add two more of them.
  */
 async function loadEnvFile(path: string): Promise<void> {
   const text = await readFile(path, 'utf8')
@@ -83,24 +107,6 @@ async function loadEnvFile(path: string): Promise<void> {
   }
 }
 
-function fluxConfig(): FluxConfig {
-  const endpoint = (process.env['AZURE_FOUNDRY_ENDPOINT'] ?? '').trim().replace(/\/+$/, '')
-  const apiKey = (process.env['AZURE_FOUNDRY_API_KEY'] ?? '').trim()
-  if (!endpoint || !apiKey) {
-    throw new Error('AZURE_FOUNDRY_ENDPOINT and AZURE_FOUNDRY_API_KEY must be set')
-  }
-  return {
-    endpoint,
-    apiKey,
-    imagePath:
-      (process.env['AZURE_FOUNDRY_IMAGE_PATH'] ?? '').trim() ||
-      '/providers/blackforestlabs/v1/flux-2-pro',
-    // Dots, not hyphens. The hyphenated path segment is a 404 as a model name — trap 2.
-    model: (process.env['STUDIO_IMAGE_MODEL'] ?? '').trim() || 'FLUX.2-pro',
-    fallbackModel: (process.env['STUDIO_IMAGE_FALLBACK_MODEL'] ?? '').trim(),
-  }
-}
-
 /* ------------------------------------------------------------------ registry guard */
 
 /**
@@ -109,7 +115,8 @@ function fluxConfig(): FluxConfig {
  * The registry is the work list. A hand-copied accent that no longer matches it would produce a
  * whole brand set in a colour nobody chose — which is exactly the defect design-system.md §7 item
  * 1 describes (`asset-forge` baking `#ff4d00` into every surface's mark). Cheap check, and it
- * fails before anything is spent.
+ * fails before anything is spent. On a per-hour deployment "before anything is spent" now also
+ * means before the clock has been running for the length of a failed run.
  */
 function assertPlanMatchesRegistry(): void {
   const byKey = new Map(SURFACES.map((s) => [String(s.key), s]))
@@ -137,6 +144,12 @@ function assertPlanMatchesRegistry(): void {
 /* ------------------------------------------------------------------ the manifest */
 
 export interface ManifestEntry {
+  /**
+   * The provider id from providers.json. Added when the set stopped being the only set: without
+   * it, three manifests describing three different models would be distinguishable only by which
+   * directory they were found in, and `compare.py` would be reading a fact off a path.
+   */
+  readonly provider: string
   readonly surface: string
   readonly surfaceName: string
   readonly kind: string
@@ -144,7 +157,7 @@ export interface ManifestEntry {
   readonly accent: string
   /** What the design system declares this kind must end up at. */
   readonly declaredSize: string
-  /** What was asked of FLUX — rounded UP to the 16-pixel grid, never down. */
+  /** What was asked of the model — rounded UP to the 16-pixel grid, never down. */
   readonly requestedSize: string
   /** What the bytes on disk actually measure. */
   readonly deliveredSize: string
@@ -157,9 +170,10 @@ export interface ManifestEntry {
   readonly model: string | null
   readonly prompt: string
   /**
-   * Null on every asset here: this deployment of FLUX 2 Pro accepts no seed parameter, so nothing
-   * true can be recorded. Kept as a column so a seeded model later has somewhere to put one, and
-   * so the absence is a stated fact rather than a missing field.
+   * Null on every FLUX asset: that deployment accepts no seed parameter, so nothing true can be
+   * recorded. Kept as a column so a seeded model has somewhere to put one — the two candidates may
+   * well accept a seed, and a seeded model turns "these two runs disagree" into something
+   * reproducible rather than anecdotal.
    */
   readonly seed: number | null
   readonly sha256: string
@@ -170,6 +184,12 @@ export interface ManifestEntry {
   /** Generations beyond the first that were needed before this file was accepted. */
   readonly retries: number
   readonly licence: string
+  /**
+   * The provider's own per-image accounting, where it has one. **Null on a Managed Compute
+   * provider and that null is load-bearing**: those deployments bill per hour of existence, so
+   * there is no per-image figure, and writing one here would invent a number. Their cost lives in
+   * DEPLOYMENT.json instead. COMPARISON.md §6 states why the two may not be added together.
+   */
   readonly providerCostUnits: number | null
   readonly providerOutputMegapixels: number | null
   /** Every attempt made, including the ones that failed. Details are redacted by the service. */
@@ -179,193 +199,49 @@ export interface ManifestEntry {
 
 type Manifest = Record<string, ManifestEntry>
 
-const keyOf = (surface: string, kind: string, size: string): string => `${surface}/${kind}-${size}`
+const keyOf = (entry: { surface: string; kind: string; declaredSize: string }): string =>
+  manifestKey(entry.surface, entry.kind, entry.declaredSize)
 
-async function readManifest(): Promise<Manifest> {
-  if (!existsSync(MANIFEST)) return {}
-  const parsed = JSON.parse(await readFile(MANIFEST, 'utf8')) as {
-    assets?: ManifestEntry[]
-  }
+async function readManifest(provider: Provider): Promise<Manifest> {
+  const path = manifestPathOf(provider)
+  if (!existsSync(path)) return {}
+  const parsed = JSON.parse(await readFile(path, 'utf8')) as { assets?: ManifestEntry[] }
   const out: Manifest = {}
-  for (const entry of parsed.assets ?? []) {
-    out[keyOf(entry.surface, entry.kind, entry.declaredSize)] = entry
-  }
+  for (const entry of parsed.assets ?? []) out[keyOf(entry)] = entry
   return out
 }
 
-async function writeManifest(manifest: Manifest): Promise<void> {
+async function writeManifest(provider: Provider, manifest: Manifest): Promise<void> {
   const assets = Object.values(manifest).sort(
     (a, b) => a.surface.localeCompare(b.surface) || a.kind.localeCompare(b.kind) || a.path.localeCompare(b.path),
   )
   const document = {
     $comment:
-      'Provenance for every image in this repository. One entry per file, carrying the columns ' +
-      "studio's generation_jobs and assets tables carry. Generated by generate.ts; do not edit by hand.",
-    generator: '@cloudsforge/studio via brand/generate.ts',
-    endpoint: 'Azure AI Foundry, Black Forest Labs FLUX 2 Pro',
+      'Provenance for every image in this set. One entry per file, carrying the columns ' +
+      "studio's generation_jobs and assets tables carry. Generated by generate.ts; do not edit " +
+      'by hand. assetCount is len(assets) by construction — it has been wrong here before.',
+    generator: `@cloudsforge/studio via brand/generate.ts --provider ${provider.id}`,
+    provider: provider.id,
+    providerLabel: provider.label,
+    endpoint: provider.vendor,
+    billing: provider.billing,
     disclosure:
-      'Every image here is AI-generated. Each as-delivered file carries C2PA provenance and a ' +
-      'Microsoft invisible watermark; derivatives lose the C2PA chunk on re-encode but keep the ' +
+      'Every image here is AI-generated. Whether a given file carries C2PA provenance is MEASURED ' +
+      'on its bytes and recorded per entry — never inherited from the vendor and never inherited ' +
+      'from a parent file. Derivatives are re-encoded and lose the C2PA chunk while keeping the ' +
       'pixel watermark, and each names the file it came from.',
     licence: GENERATED_LICENCE,
     assetCount: assets.length,
     updatedAt: new Date().toISOString(),
     assets,
   }
-  await writeFile(MANIFEST, `${JSON.stringify(document, null, 2)}\n`, 'utf8')
+  await mkdir(provider.root, { recursive: true })
+  await writeFile(manifestPathOf(provider), `${JSON.stringify(document, null, 2)}\n`, 'utf8')
 }
 
 /* ------------------------------------------------------------------ generation */
 
-/** The C2PA box identifier, in the PNG's metadata chunks. Same marker the service reads. */
-const C2PA = Buffer.from('c2pa')
-
 const sha256 = (bytes: Buffer): string => createHash('sha256').update(bytes).digest('hex')
-
-function specForKind(kind: PlannedKind): AssetSpec {
-  return specFor(kind)
-}
-
-function fileNameFor(kind: PlannedKind, spec: AssetSpec, requested: { width: number; height: number }): string {
-  const onGrid = requested.width === spec.width && requested.height === spec.height
-  // A cropped kind keeps BOTH files: the as-delivered one, which still carries its C2PA chunk,
-  // and the cut-down one the platform actually requires. Naming the as-delivered file for what it
-  // is stops it being mistaken for the shippable asset.
-  return onGrid
-    ? `${kind}-${sizeString(spec)}.png`
-    : `${kind}-${requested.width}x${requested.height}-asdelivered.png`
-}
-
-/**
- * The one paragraph this run adds after the service's own prompt, and why it is here.
- *
- * `studio/src/prompt.ts` already names the ground — "high contrast against a warm ash ground
- * (#12100f)" — but it names it in the MIDDLE of the style paragraph, and the first live image of
- * this run came back on a mid-grey taupe field with faint construction guides ruled across it: a
- * margin box, a centre cross and a quarter grid. Both are the same failure. A constraint stated
- * mid-paragraph is treated as a suggestion, and the words "on a single grid" in the style
- * paragraph are read by the model as an instruction to DRAW the grid rather than to build on one.
- *
- * So the ground is restated last, as its own paragraph, alongside the prohibitions — which is the
- * placement `prompt.ts`'s own header argues for: "a prohibition placed before the subject is
- * routinely ignored by image models".
- *
- * This is appended here rather than edited into the service because `studio/` is read-only for
- * this run and because the finding belongs to the service as a change with its own tests, not as
- * a silent edit made in passing. It is recorded in every manifest entry's `prompt`, so what was
- * actually sent is what is stored.
- */
-const GROUND_CLAUSE =
-  'The background is one flat, uniform, unbroken near-black warm ash field, hex #12100f, ' +
-  'filling the entire frame from edge to edge — not grey, not taupe, not beige, and not lighter ' +
-  'at the corners. The artwork is bright against a dark ground, never dark against a light one. ' +
-  'Draw only the finished mark: no construction lines, no grid, no guides, no ruled margins, no ' +
-  'border, no frame, no bounding box, no registration marks, no drop shadow.'
-
-/**
- * Per-kind hardening, each clause written against a defect seen in this run's own output.
- *
- * These are not guesses about what a model might get wrong. Every one of them names something
- * that came back wrong on the first full pass of 44 images and was found by looking at a contact
- * sheet, and each is worth keeping because the failure is characteristic of the kind rather than
- * of the surface:
- *
- *   * **favicon — the inset duplicate.** Three of eleven favicons came back as the mark PLUS a
- *     second, smaller, framed copy of itself in the lower half, like a preview thumbnail pasted
- *     into the artwork. The composition line asks for something "drawn heavier and simpler than
- *     the full mark", and the model appears to answer by showing both.
- *   * **wordmark, og, social — the invented name.** `market`'s social banner came back reading
- *     "Sftware Company": both a misspelling and a phrase from the style paragraph's own first
- *     sentence ("brand mark for a software company") leaking into the artwork as text. `worlds`
- *     came back with no name on it at all. So the name is restated as the only permitted string,
- *     and drawn exactly once.
- *   * **every kind — the unaccented mark.** `hub`'s OG card drew the ridge in mid-grey with a
- *     5-pixel ember diamond, and `worlds` drew its whole settlement in white. Both are a mark
- *     that cannot be told from any other surface's, which is the entire job the accent does.
- *     design-system.md §5 does allow a two-colour mark — the ground line in `--cf-fg-mute` — so
- *     the clause permits the ridge to be bone and requires everything else to be the accent.
- */
-const HARDENING: Readonly<Record<PlannedKind, string>> = {
-  mark: '',
-  favicon:
-    'Draw the mark exactly ONCE, filling the frame. Do not repeat it, do not inset a second ' +
-    'smaller copy, do not add a thumbnail, a preview box, a framed panel, a tile, a mirror or a ' +
-    'variant beside or below it. One mark, one frame, nothing else in the picture.',
-  wordmark: '',
-  og: '',
-  social: '',
-}
-
-/**
- * The lettering clause, for the three kinds that carry a name.
- *
- * `prompt.ts` already states the spelling. This restates it as an exclusion — that string and no
- * other string — because the observed failure was never a misread of the name. It was a SECOND
- * phrase arriving that nobody asked for, and it arrived from two distinct sources:
- *
- *   * **The style paragraph.** `market`'s banner came back reading "Sftware Company", which is
- *     the opening words of `prompt.ts`'s own `brandStyle` ("Brand mark for a software company"),
- *     misspelt and rendered as artwork.
- *   * **The idea paragraph.** After the first fix, `trade`'s OG card came back captioned
- *     "Quench Curve" with the baseline annotated "ash ridge" — this repository's own
- *     `plan.ts` vocabulary, drawn as a diagram label.
- *
- * Both are the same failure with different words, so the clause forbids the CATEGORY: any text
- * that is not the name, including any word used to describe the drawing. The name is also spelled
- * out character by character, which is the one thing that reliably moves an image model off an
- * invented string — `worlds` produced "Cartre Pere" from nowhere before this was added.
- */
-function letteringClause(name: string): string {
-  const spelled = name
-    .split('')
-    .map((character) => (character === ' ' ? 'space' : character))
-    .join('-')
-  return (
-    `The ONLY text anywhere in this image is the name "${name}", set once. Spelled character by ` +
-    `character it is: ${spelled}. Nothing else is written anywhere in the frame: no tagline, no ` +
-    'strapline, no subtitle, no second line, no caption, no label, no annotation, no callout, no ' +
-    'legend, no axis title, no word naming a part of the drawing, no word taken from any ' +
-    'description of the drawing, no words such as "software", "company", "platform", "brand", ' +
-    '"curve", "ridge", "spark", "flame", "awning" or "horizon", no invented words, no misspelled ' +
-    'or partial words, no repeated name, no URL, no dot-com and no registered mark. If any other ' +
-    'string would appear, leave that area empty instead.'
-  )
-}
-
-/**
- * The accent clause. Applied to every kind, because the failure was not confined to one.
- *
- * The ridge exemption is deliberate and comes from design-system.md §5: "a ground line — the ash
- * ridge, in `--cf-fg-mute`" plus "one accent element — the product's idea, in `--cf-accent`". Bone
- * `#b7ae9b` is that `--cf-fg-mute`. Forbidding a second colour outright would forbid the family's
- * own construction.
- */
-function accentClause(accent: string): string {
-  return (
-    `Every drawn element is filled or stroked in ${accent} — that exact colour, at full ` +
-    'strength. The only permitted exception is the ground line, which may instead be a muted bone ' +
-    `#b7ae9b. Nothing is drawn in plain white, plain grey or the ground colour, and ${accent} is ` +
-    'the dominant colour of the artwork rather than a small detail on it.'
-  )
-}
-
-const LETTERED: ReadonlySet<PlannedKind> = new Set<PlannedKind>(['wordmark', 'og', 'social'])
-
-function promptFor(surface: PlannedSurface, spec: AssetSpec, kind: PlannedKind): string {
-  const parts = [
-    buildPrompt({
-      kitName: surface.name,
-      accent: surface.accent,
-      stylePrompt: surface.idea,
-      spec,
-    }),
-    GROUND_CLAUSE,
-    accentClause(surface.accent),
-    LETTERED.has(kind) ? letteringClause(surface.name) : '',
-    HARDENING[kind],
-  ]
-  return parts.filter((part) => part.length > 0).join('\n\n')
-}
 
 interface GeneratedOne {
   readonly entry: ManifestEntry
@@ -373,26 +249,27 @@ interface GeneratedOne {
 }
 
 async function generateOne(
-  backend: ReturnType<typeof fluxBackend>,
+  provider: Provider,
+  backend: ProviderBackend,
   surface: PlannedSurface,
   kind: PlannedKind,
   previousRetries: number,
+  reprompt: boolean,
 ): Promise<GeneratedOne> {
-  const spec = specForKind(kind)
-  const requested = requestSizeFor(spec)
-  const prompt = promptFor(surface, spec, kind)
+  const identity = identityFor(surface, kind)
+  const prompt = promptForProvider(provider.id, surface, kind, { reprompt })
 
-  const request: ImageRequest = {
+  const request: GenerationRequest = {
     prompt,
-    spec,
-    requestWidth: requested.width,
-    requestHeight: requested.height,
+    spec: identity.spec,
+    requestWidth: identity.requested.width,
+    requestHeight: identity.requested.height,
     kitName: surface.name,
     accent: surface.accent,
   }
 
-  // Transport faults and 429s are the two things worth retrying here; the service's own chain
-  // handles the model-level fallback, and there is only one model deployed for it to try.
+  // Transport faults and 429s are the two things worth retrying here; the backend's own chain
+  // handles any model-level fallback.
   const MAX_TRANSIENT = 3
   let transient = 0
   let lastError: unknown = null
@@ -402,27 +279,26 @@ async function generateOne(
     try {
       const result = await backend.generate(request, AbortSignal.timeout(300_000))
       allAttempts.push(...result.attempts)
-      const dir = join(ASSETS, surface.key)
+      const dir = join(assetsDirOf(provider), surface.key)
       await mkdir(dir, { recursive: true })
-      const fileName = fileNameFor(kind, spec, requested)
-      const path = join(dir, fileName)
+      const path = join(dir, identity.fileName)
       await writeFile(path, result.bytes)
 
-      const sizing = reportSizing(result.bytes, { width: requested.width, height: requested.height }, 'png')
-      const declared = sizeString(spec)
+      const sizing = reportSizing(result.bytes, identity.requested, 'png')
       const delivered = sizing.actual ? `${sizing.actual.width}x${sizing.actual.height}` : 'unknown'
-      const isSource = fileName.includes('asdelivered')
+      const isSource = !identity.onGrid
 
       return {
         retriedTransient: transient,
         entry: {
+          provider: provider.id,
           surface: surface.key,
           surfaceName: surface.name,
-          kind: isSource ? `${kind}-source` : kind,
-          path: `assets/${surface.key}/${fileName}`,
+          kind: identity.recordedKind,
+          path: `assets/${surface.key}/${identity.fileName}`,
           accent: surface.accent,
-          declaredSize: isSource ? `${requested.width}x${requested.height}` : declared,
-          requestedSize: `${requested.width}x${requested.height}`,
+          declaredSize: identity.declaredSize,
+          requestedSize: `${identity.requested.width}x${identity.requested.height}`,
           deliveredSize: delivered,
           sizing: sizing.sizing,
           cropped: false,
@@ -430,29 +306,34 @@ async function generateOne(
           backend: result.backend,
           model: result.model,
           prompt,
-          seed: null,
+          seed: result.seed,
           sha256: sha256(result.bytes),
           byteSize: result.bytes.length,
           generatedAt: new Date().toISOString(),
-          c2pa: result.bytes.includes(C2PA),
+          // Measured, never asserted. The standing rule.
+          c2pa: result.c2pa,
           retries: previousRetries + transient,
           licence: GENERATED_LICENCE,
-          providerCostUnits: result.providerMeta?.cost ?? null,
-          providerOutputMegapixels: result.providerMeta?.outputMegapixels ?? null,
+          providerCostUnits: result.providerCostUnits,
+          providerOutputMegapixels: result.providerOutputMegapixels,
           attempts: allAttempts,
           ...(isSource
             ? {
                 note:
-                  `As delivered at ${requested.width}x${requested.height}. The declared ` +
-                  `${declared} is not a multiple of 16, so it was asked for rounded UP and cut ` +
-                  'down rather than upscaled. This file is kept because it is the one that still ' +
-                  'carries the C2PA chunk.',
+                  `As delivered at ${identity.requested.width}x${identity.requested.height}. The ` +
+                  `declared ${identity.spec.width}x${identity.spec.height} is not a multiple of ` +
+                  '16, so it was asked for rounded UP and cut down rather than upscaled. This ' +
+                  'file is kept because it is the one that still carries the C2PA chunk, where ' +
+                  'the provider emits one at all.',
               }
             : {}),
         },
       }
     } catch (err) {
       lastError = err
+      // An unimplemented backend is wrong on every retry and wrong for every asset. Fail the whole
+      // run at once rather than three times per asset across ninety-four assets.
+      if (err instanceof UnimplementedBackendError) throw err
       if (err instanceof ImageBackendError) {
         allAttempts.push(...err.attempts)
         // A refusal or a credential problem is wrong the same way on every retry. The service
@@ -474,68 +355,146 @@ async function generateOne(
 /* ------------------------------------------------------------------ derivatives */
 
 /**
- * Crop the OG card and resample the favicons, in Python's Pillow.
+ * Crop the OG card and resample the favicons, in Python's Pillow, for this provider's set.
  *
  * Pillow rather than macOS `sips`, so this is reproducible off one laptop — design-system.md §7
  * item 3 names `sips` as the reason twelve game masters still sit at 1024 against a declared 512.
  * A derivative is re-encoded, so it loses the PNG's C2PA chunk while keeping the invisible pixel
  * watermark; `derive.py` reports the C2PA state it measures rather than inheriting the claim.
+ *
+ * **Derivatives are never generated by the model.** A favicon is a Lanczos downscale of THIS
+ * provider's own 512 mark and an OG card is a centre crop of THIS provider's own as-delivered
+ * card; asking a model for them separately would break the relationship the `derivedFrom` column
+ * asserts and would spend forty more generations per set to get a worse answer.
  */
-async function derive(): Promise<ManifestEntry[]> {
-  const { stdout } = await run('python3', [join(HERE, 'derive.py')], { maxBuffer: 32 * 1024 * 1024 })
+async function derive(provider: Provider): Promise<ManifestEntry[]> {
+  const { stdout } = await run('python3', [join(HERE, 'derive.py'), '--provider', provider.id], {
+    maxBuffer: 32 * 1024 * 1024,
+  })
   return JSON.parse(stdout) as ManifestEntry[]
+}
+
+/* ------------------------------------------------------------------ the reviewable plan */
+
+/**
+ * Write PLAN.json: every asset and every prompt, before anything is spent.
+ *
+ * Adopted from the sibling asset repositories, with one correction learned from them. Theirs are
+ * regenerated on every run from the current clauses, so PLAN.json drifts away from what was
+ * actually sent the moment a clause is edited — 80 of aetherholm-assets' 101 entries now carry a
+ * manifest prompt that its own PLAN.json no longer derives. So this file is documented for what it
+ * is: **a preview of what the next run would send, not a record of what a past run did send.**
+ * The record is the manifest, and that is what `verify.py --parity` compares across providers.
+ */
+async function writePlanJson(): Promise<number> {
+  const planned = plannedAssets()
+  const document = {
+    $comment:
+      'The generation plan: what the NEXT reference run would send, derived from plan.ts and ' +
+      'prompts.ts and written before a single generation is paid for. It is NOT a record of what ' +
+      'was sent — that is MANIFEST.json, per provider, and it is the manifests that verify.py ' +
+      'compares for prompt parity. Do not edit by hand; it is regenerated, which is the point.',
+    generatedAt: new Date().toISOString(),
+    referenceProvider: REFERENCE.id,
+    total: planned.length,
+    assets: planned.map(({ surface, kind }) => {
+      const identity = identityFor(surface, kind)
+      return {
+        key: identity.key,
+        surface: surface.key,
+        surfaceName: surface.name,
+        kind,
+        recordedKind: identity.recordedKind,
+        declaredSize: identity.declaredSize,
+        requestedSize: `${identity.requested.width}x${identity.requested.height}`,
+        accent: surface.accent,
+        tier: surface.tier,
+        prompt: promptFor(surface, identity.spec, kind),
+      }
+    }),
+  }
+  await writeFile(PLAN_JSON, `${JSON.stringify(document, null, 2)}\n`, 'utf8')
+  return planned.length
 }
 
 /* ------------------------------------------------------------------ main */
 
 interface Selection {
+  readonly provider: Provider
   readonly force: boolean
   readonly only: ReadonlySet<string> | null
   readonly deriveOnly: boolean
+  readonly planOnly: boolean
+  /**
+   * Deliberately change the question an already-generated asset is asked. Reference-only, and it
+   * makes every candidate's copy of that asset stale — `verify.py --parity` will say so until they
+   * are regenerated. Without it, a regeneration replays the prompt that is on record, which is what
+   * keeps three sets comparable across time.
+   */
+  readonly reprompt: boolean
+  readonly concurrency: number
+  readonly limit: number | null
 }
 
 function parseArgs(argv: readonly string[]): Selection {
-  const force = argv.includes('--force')
-  const deriveOnly = argv.includes('--derive-only')
-  const onlyIndex = argv.indexOf('--only')
-  const only =
-    onlyIndex >= 0 && argv[onlyIndex + 1]
-      ? new Set(
-          argv[onlyIndex + 1]!
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean),
-        )
-      : null
-  return { force, only, deriveOnly }
+  const valueOf = (flag: string): string | null => {
+    const index = argv.indexOf(flag)
+    return index >= 0 && argv[index + 1] ? argv[index + 1]! : null
+  }
+  const providerId = valueOf('--provider') ?? REFERENCE.id
+  const provider = providerById(providerId)
+  const only = valueOf('--only')
+  const limit = valueOf('--limit')
+  const concurrency = valueOf('--concurrency')
+  return {
+    provider,
+    force: argv.includes('--force'),
+    deriveOnly: argv.includes('--derive-only'),
+    planOnly: argv.includes('--plan'),
+    reprompt: argv.includes('--reprompt'),
+    only: only ? new Set(only.split(',').map((s) => s.trim()).filter(Boolean)) : null,
+    // Per provider, from providers.json: a shared serverless endpoint and a dedicated A100 have
+    // completely different reasons to be narrow, and the right width for one is wrong for the
+    // other. Overridable because the honest value is measured, not predicted.
+    concurrency: concurrency && Number(concurrency) > 0 ? Number(concurrency) : provider.concurrency,
+    // The only real budget control is arithmetic on the number of calls.
+    limit: limit && Number.isInteger(Number(limit)) ? Number(limit) : null,
+  }
 }
 
 async function main(): Promise<void> {
-  await loadEnvFile(ENV_FILE)
-  assertPlanMatchesRegistry()
   const selection = parseArgs(process.argv.slice(2))
-  const manifest = await readManifest()
+  const provider = selection.provider
+  assertPlanMatchesRegistry()
+
+  const plannedCount = await writePlanJson()
+  process.stdout.write(`PLAN.json: ${plannedCount} asset(s) planned\n`)
+  if (selection.planOnly) return
+
+  await loadEnvFile(ENV_FILE)
+  const manifest = await readManifest(provider)
+  const startedAt = Date.now()
+
+  process.stdout.write(
+    `provider ${provider.id} (${provider.label}) — ` +
+      `${provider.shipped ? 'the shipped reference set' : 'a candidate set'}, ` +
+      `billed per ${provider.billing.unit}\n`,
+  )
 
   if (!selection.deriveOnly) {
-    const config = fluxConfig()
-    const backend = fluxBackend(config, { deadlineMs: 300_000 })
-    const work = plannedAssets().filter(({ surface, kind }) => {
+    const backend = backendFor(provider)
+    let work = plannedAssets().filter(({ surface, kind }) => {
       if (selection.only && !selection.only.has(`${surface.key}:${kind}`)) return false
       if (selection.force) return true
-      const spec = specForKind(kind)
-      const requested = requestSizeFor(spec)
-      const onGrid = requested.width === spec.width && requested.height === spec.height
-      const declared = onGrid ? sizeString(spec) : `${requested.width}x${requested.height}`
-      const recordedKind = onGrid ? kind : `${kind}-source`
-      return manifest[keyOf(surface.key, recordedKind, declared)] === undefined
+      // The resume rule: anything already recorded in THIS provider's manifest is done.
+      return manifest[identityFor(surface, kind).key] === undefined
     })
+    if (selection.limit !== null) work = work.slice(0, selection.limit)
 
-    process.stdout.write(`${work.length} asset(s) to generate\n`)
+    process.stdout.write(
+      `${work.length} asset(s) to generate, ${selection.concurrency} at a time\n`,
+    )
 
-    // Three at a time. FLUX takes twenty to forty seconds an image, so serial would be half an
-    // hour of wall clock; more than a handful in flight is how a shared deployment starts
-    // answering 429 and the retry budget goes on capacity rather than on quality.
-    const CONCURRENCY = 3
     let cursor = 0
     let failures = 0
     const worker = async (): Promise<void> => {
@@ -545,41 +504,71 @@ async function main(): Promise<void> {
         const item = work[index]
         if (!item) return
         const { surface, kind } = item
-        const spec = specForKind(kind)
-        const requested = requestSizeFor(spec)
-        const onGrid = requested.width === spec.width && requested.height === spec.height
-        const recordedKind = onGrid ? kind : `${kind}-source`
-        const declared = onGrid ? sizeString(spec) : `${requested.width}x${requested.height}`
-        const previous = manifest[keyOf(surface.key, recordedKind, declared)]
+        const previous = manifest[identityFor(surface, kind).key]
         // A forced regeneration counts as a retry of the asset, whatever the reason: a transport
         // fault and "the lettering was wrong" both mean this file was not right the first time.
         const previousRetries = previous ? previous.retries + 1 : 0
         try {
-          const { entry } = await generateOne(backend, surface, kind, previousRetries)
-          manifest[keyOf(entry.surface, entry.kind, entry.declaredSize)] = entry
+          const { entry } = await generateOne(
+            provider,
+            backend,
+            surface,
+            kind,
+            previousRetries,
+            selection.reprompt,
+          )
+          manifest[keyOf(entry)] = entry
           process.stdout.write(
             `  ok  ${surface.key}/${kind} ${entry.deliveredSize} ` +
               `${(entry.byteSize / 1024).toFixed(0)}KB c2pa=${entry.c2pa} retries=${entry.retries}\n`,
           )
-          await writeManifest(manifest)
+          // After every single asset. An interrupted run must lose at most one image.
+          await writeManifest(provider, manifest)
         } catch (err) {
+          if (err instanceof UnimplementedBackendError) throw err
           failures += 1
           const message = err instanceof Error ? err.message : String(err)
           process.stdout.write(`  FAIL ${surface.key}/${kind}: ${message}\n`)
         }
       }
     }
-    await Promise.all(Array.from({ length: CONCURRENCY }, worker))
+    await Promise.all(Array.from({ length: selection.concurrency }, worker))
     if (failures > 0) process.stdout.write(`\n${failures} asset(s) failed\n`)
   }
 
   // Derivatives are rebuilt from whatever is on disk every run, so a regenerated source can never
   // leave a stale crop or a stale favicon behind it.
-  for (const entry of await derive()) {
-    manifest[keyOf(entry.surface, entry.kind, entry.declaredSize)] = entry
+  for (const entry of await derive(provider)) manifest[keyOf(entry)] = entry
+  await writeManifest(provider, manifest)
+
+  const minutes = ((Date.now() - startedAt) / 60_000).toFixed(1)
+  process.stdout.write(`\nmanifest: ${Object.keys(manifest).length} entries in ${minutes} minutes\n`)
+
+  const outstanding = plannedAssets().filter(
+    ({ surface, kind }) => manifest[identityFor(surface, kind).key] === undefined,
+  ).length
+  if (outstanding === 0 && provider.billing.unit === 'deployment hour') {
+    // The bill is wall-clock, not images. Saying this on stdout is the difference between a
+    // deployment torn down at the end of the run and one torn down when somebody next looks.
+    process.stdout.write(
+      `\nSET COMPLETE for ${provider.id}. This deployment bills per ${provider.billing.unit} ` +
+        'whether or not it generates anything — delete it now. It does not need to wait for the ' +
+        'other candidate, which runs against its own endpoint and its own manifest.\n',
+    )
+  } else if (outstanding > 0) {
+    process.stdout.write(`${outstanding} asset(s) still outstanding; re-run to resume\n`)
   }
-  await writeManifest(manifest)
-  process.stdout.write(`\nmanifest: ${Object.keys(manifest).length} entries\n`)
 }
 
-await main()
+// Surfacing the checklist is the entire value of an unimplemented backend, so it is printed in
+// full rather than being flattened into a one-line stack trace.
+await main().catch((err: unknown) => {
+  if (err instanceof UnimplementedBackendError) {
+    process.stderr.write(`\n${err.message}\n`)
+    process.exitCode = 2
+    return
+  }
+  throw err
+})
+
+export { PROVIDERS }

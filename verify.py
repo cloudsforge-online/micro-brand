@@ -47,12 +47,43 @@ accent, and is there any third hue present that neither the accent nor the compa
 
 No numpy. It is not installed and this is a few hundred thousand pixel samples, not a workload.
 
-    python3 verify.py            # every asset
-    python3 verify.py site hub   # only these surfaces
+## Three sets, not one
+
+Every check below runs per PROVIDER. `--provider` selects one; the default is every set that
+exists on disk, which today is the reference set alone and tomorrow is three. A candidate set is
+expected to be red while it is being worked on, and that must not be able to turn the shipped
+reference set red with it, which is why each set has its own manifest and its own pass or fail line.
+
+Two checks are ABOUT the set of sets rather than about any one image, and both run last:
+
+  5. **assetCount.** The manifest's own count must equal the number of entries it carries. Trivial,
+     and it was wrong in two of the estate's three asset repositories when this was written — 93
+     against 94 here, 134 against 137 in emberkin-assets — because the count is written by the
+     generator and the last few entries were added by a later tool that did not update it. A
+     manifest whose own summary disagrees with its own body is a manifest nobody can quote.
+  6. **PROMPT PARITY.** For every asset present in more than one set, all sets must record a
+     byte-identical prompt. This is the check the whole three-way comparison rests on: three models
+     asked different questions produce an incomparable answer, and the failure is invisible in the
+     images — it looks like one model being worse at prompt adherence.
+
+     It compares the MANIFESTS, not PLAN.json and not the prompt-building code, because the
+     manifest is the only artefact that records what was actually sent. PLAN.json is regenerated
+     from the current clauses on every run and drifts away from the run it describes the moment a
+     clause is edited: 80 of aetherholm-assets' 101 entries already carry a manifest prompt its own
+     PLAN.json no longer derives. Checking against the code would therefore be checking against a
+     thing that has already moved.
+
+     Vacuously true today, and deliberately shipped before there is a second set: it is binding the
+     first minute a candidate lands, which is the minute it matters.
+
+    python3 verify.py                                  # every set present, every asset
+    python3 verify.py site hub                         # only these surfaces
+    python3 verify.py --provider qwen-image-2512       # one set
 """
 
 from __future__ import annotations
 
+import argparse
 import colorsys
 import hashlib
 import json
@@ -61,8 +92,9 @@ from pathlib import Path
 
 from PIL import Image
 
+import providers
+
 HERE = Path(__file__).resolve().parent
-MANIFEST = HERE / "MANIFEST.json"
 
 GROUND = "#12100f"
 # The ground must be dark. #12100f is luma 0.005 and the marks come back around 0.02-0.04, so 0.12
@@ -198,18 +230,76 @@ def read_accent(image: Image.Image, accent: str) -> AccentReading:
     return AccentReading(len(matched) / total, rendered, len(stray) / total, median(stray))
 
 
-def main(argv: list[str]) -> int:
-    document = json.loads(MANIFEST.read_text())
-    wanted = set(argv[1:])
+def check_parity(documents: dict[str, dict]) -> list[str]:
+    """Every asset present in two or more sets must carry the same prompt in both.
+
+    Keyed on surface/kind@size — the manifest key — rather than on the file path, so that a
+    provider whose delivered dimensions differ from FLUX's (an open question until each Managed
+    Compute endpoint is probed) is still lined up with the right reference asset.
+
+    Also reports an asset a candidate has that the reference does not. A candidate replays the
+    reference set's recorded prompts, so it can only ever be a subset; an extra key means something
+    generated a prompt of its own, which is the failure this whole check exists to catch.
+    """
+    if len(documents) < 2:
+        return []
+
+    by_key: dict[str, dict[str, str]] = {}
+    for provider_id, document in documents.items():
+        for asset in document["assets"]:
+            key = f'{asset["surface"]}/{asset["kind"]}@{asset["declaredSize"]}'
+            by_key.setdefault(key, {})[provider_id] = asset["prompt"]
+
+    reference_id = providers.reference().id
+    problems: list[str] = []
+    for key, prompts in sorted(by_key.items()):
+        if len(prompts) < 2:
+            if reference_id in documents and reference_id not in prompts:
+                problems.append(
+                    f"{key}: present in {', '.join(sorted(prompts))} but not in the reference set "
+                    f"{reference_id} — a candidate replays the reference's recorded prompts, so it "
+                    "cannot hold an asset the reference has never generated"
+                )
+            continue
+        distinct = {}
+        for provider_id, prompt in prompts.items():
+            distinct.setdefault(hashlib.sha256(prompt.encode()).hexdigest()[:12], []).append(provider_id)
+        if len(distinct) > 1:
+            groups = "; ".join(
+                f'{digest} = {", ".join(sorted(ids))}' for digest, ids in sorted(distinct.items())
+            )
+            problems.append(
+                f"{key}: the sets were given DIFFERENT prompts ({groups}). The comparison between "
+                "them is not valid until they agree — regenerate the candidate, which replays the "
+                "reference's recorded prompt rather than computing one"
+            )
+    return problems
+
+
+def verify_one(provider: providers.Provider, wanted: set[str]) -> tuple[list[str], list[str], dict]:
+    document = json.loads(provider.manifest.read_text())
     ground_target = hex_to_rgb(GROUND)
 
     failures: list[str] = []
     rows: list[str] = []
 
+    declared_count = document.get("assetCount")
+    if declared_count is not None and declared_count != len(document["assets"]):
+        failures.append(
+            f'MANIFEST.json: assetCount says {declared_count} and the file carries '
+            f'{len(document["assets"])} entries'
+        )
+
+    recorded = {asset["path"] for asset in document["assets"]}
+    on_disk = {str(p.relative_to(provider.root)) for p in provider.root.glob("assets/**/*.png")}
+    for orphan in sorted(on_disk - recorded):
+        # The direction verify.py's per-asset checks cannot see: a file with no provenance at all.
+        failures.append(f"{orphan}: on disk with no manifest entry")
+
     for asset in document["assets"]:
         if wanted and asset["surface"] not in wanted:
             continue
-        path = HERE / asset["path"]
+        path = provider.root / asset["path"]
         problems: list[str] = []
 
         if not path.exists():
@@ -264,13 +354,47 @@ def main(argv: list[str]) -> int:
             rows.append(f"       -> {problem}")
             failures.append(f'{asset["path"]}: {problem}')
 
-    print("\n".join(rows))
-    print(
+    rows.append(
         f"\ntarget ground {GROUND} (luma {luma(ground_target):.3f}); "
         f"ceiling {MAX_GROUND_LUMA}, hue tolerance {MAX_HUE_DRIFT:.0f} degrees"
     )
-    print(f"{len(failures)} failure(s)")
-    return 1 if failures else 0
+    return failures, rows, document
+
+
+def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(description="Verify one or more generated asset sets.")
+    providers.add_argument(parser)
+    parser.add_argument("surfaces", nargs="*", help="only these registry surfaces")
+    args = parser.parse_args(argv[1:])
+
+    chosen = providers.selected(args)
+    if not chosen:
+        print("no provider has a manifest on disk", file=sys.stderr)
+        return 1
+
+    wanted = set(args.surfaces)
+    all_failures: list[str] = []
+    documents: dict[str, dict] = {}
+
+    for provider in chosen:
+        print(f"===== {provider.id}  ({provider.label})")
+        failures, rows, document = verify_one(provider, wanted)
+        documents[provider.id] = document
+        print("\n".join(rows))
+        print(f"{len(failures)} failure(s) in {provider.id}\n")
+        all_failures.extend(f"{provider.id}: {f}" for f in failures)
+
+    # Across the sets. Only meaningful once there is more than one, and free to run when there is
+    # not — so it ships now rather than being added on the day a second set arrives and is forgotten.
+    parity = check_parity(documents)
+    if len(documents) > 1:
+        print(f"===== prompt parity across {len(documents)} sets: {len(parity)} disagreement(s)")
+        for problem in parity:
+            print(f"  -> {problem}")
+    all_failures.extend(f"parity: {p}" for p in parity)
+
+    print(f"\n{len(all_failures)} failure(s) across {len(chosen)} set(s)")
+    return 1 if all_failures else 0
 
 
 if __name__ == "__main__":
