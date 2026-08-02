@@ -28,6 +28,9 @@ class Provider:
     adapter: str
     #: Repository-relative root. "." for the reference provider; see providers.json's header.
     root: Path
+    #: "live" or "withdrawn". A withdrawn provider's deployment no longer exists; its entry is kept
+    #: because the wire facts in it were measured. Nothing here counts providers.
+    status: str
     shipped: bool
     implemented: bool
     concurrency: int
@@ -67,6 +70,7 @@ def load() -> list[Provider]:
                 vendor=raw["vendor"],
                 adapter=raw["adapter"],
                 root=(HERE / raw["root"]).resolve(),
+                status=raw.get("status", "live"),
                 shipped=bool(raw["shipped"]),
                 implemented=bool(raw["implemented"]),
                 concurrency=int(raw["concurrency"]),
@@ -91,11 +95,17 @@ def by_id(provider_id: str) -> Provider:
     raise SystemExit(f"unknown provider {provider_id!r}; providers.json registers: {known}")
 
 
+def live() -> list[Provider]:
+    """Every provider that can be run against today. Never a hardcoded pair."""
+    return [p for p in load() if p.status == "live"]
+
+
 def present() -> list[Provider]:
     """Every registered provider that actually has a manifest on disk.
 
     This is what the tools default to. A run of verify.py or compare.py must not fail merely
-    because a challenger has not been generated yet — that is the normal state, not a fault.
+    because a challenger has not been generated yet — that is the normal state, not a fault, and it
+    is the state a withdrawn provider is permanently in.
     """
     return [p for p in load() if p.exists]
 
@@ -123,7 +133,7 @@ if __name__ == "__main__":
         shipped = "shipped" if provider.shipped else "candidate"
         adapter = "implemented" if provider.implemented else "STUB"
         print(
-            f"{provider.id:<18} {shipped:<9} {adapter:<11} {state:<13} "
+            f"{provider.id:<18} {provider.status:<10} {shipped:<9} {adapter:<11} {state:<13} "
             f"{provider.root.relative_to(HERE) if provider.root != HERE else '.'}"
         )
     sys.exit(0)

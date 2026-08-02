@@ -14,6 +14,18 @@ const HERE = import.meta.dirname
 
 export type AdapterKind = 'foundry-serverless' | 'foundry-managed-compute'
 
+/**
+ * Whether a provider can be run against at all.
+ *
+ * `withdrawn` is not `implemented: false`. An unimplemented backend is one whose wire shape is not
+ * known yet; a withdrawn one is a deployment that no longer exists. Cosmos 3 Super failed to come
+ * up on A100_80GB and was deleted, and its entry is kept complete rather than removed — the estate
+ * has a stated 3D/animation gap FLUX cannot fill (docs/ecosystem/19-new-products.md:97), so a third
+ * model is a question of when. Nothing in this repository counts providers or assumes there are
+ * two: the registry is the list, and `live()` is the subset that can be run.
+ */
+export type ProviderStatus = 'live' | 'withdrawn'
+
 export interface ProviderBilling {
   /** The unit this model actually bills in. Never converted; see COMPARISON.md §6. */
   readonly unit: string
@@ -30,6 +42,7 @@ export interface Provider {
   readonly adapter: AdapterKind
   /** Absolute. `assets/` and `MANIFEST.json` hang off this. */
   readonly root: string
+  readonly status: ProviderStatus
   readonly shipped: boolean
   /** False for a backend that is still a stub. `backendFor` throws rather than guessing a body. */
   readonly implemented: boolean
@@ -78,6 +91,20 @@ export function providerById(id: string): Provider {
  * prompts a candidate run REPLAYS rather than recomputes. See generate.ts's prompt-parity header.
  */
 export const REFERENCE: Provider = providerById(document.reference)
+
+/** Every provider that can actually be run against today. Never a hardcoded pair. */
+export const live = (): readonly Provider[] => PROVIDERS.filter((p) => p.status === 'live')
+
+export class ProviderWithdrawnError extends Error {
+  constructor(provider: Provider) {
+    super(
+      `${provider.id} is withdrawn: its deployment no longer exists, so there is nothing to run ` +
+        'against. Its registry entry is kept because the wire facts in it were measured and are ' +
+        'cheaper to re-read than to re-establish. Redeploy it and set status to "live".',
+    )
+    this.name = 'ProviderWithdrawnError'
+  }
+}
 
 export const assetsDirOf = (provider: Provider): string => join(provider.root, 'assets')
 export const manifestPathOf = (provider: Provider): string => join(provider.root, 'MANIFEST.json')

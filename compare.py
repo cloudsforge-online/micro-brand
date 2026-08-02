@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Judge the three sets against each other, on the criteria COMPARISON.md fixes in advance.
+"""Judge the generated sets against each other, on the criteria COMPARISON.md fixes in advance.
 
     python3 compare.py                      # every set present: sheets + the measured report
     python3 compare.py --no-sheets          # the numbers only
@@ -8,9 +8,9 @@
 ## What this is, and what it is not
 
 `sheet.py` renders one set so a person can look at it. This renders the SAME asset from every set
-side by side, which is the only arrangement in which "which is better" is a judgeable question
-rather than a memory test — and then measures the four criteria that can honestly be measured, so
-the human judgement is spent on the two that cannot.
+side by side — two columns today, N whenever there are N — which is the only arrangement in which
+"which is better" is a judgeable question rather than a memory test. It then measures the criteria
+that can honestly be measured, so the human judgement is spent on the ones that cannot.
 
 **It does not produce a score.** A single number per model would average a set that is coherent but
 dull with one that is brilliant three times in twenty, and those are not the same product. What it
@@ -20,7 +20,9 @@ produces is a verdict per criterion with named examples, which is what COMPARISO
 
   1. **Prompt adherence** — partly measurable. Ground fidelity, accent coverage, stray hue and
      delivered size are arithmetic. "Did it draw the idea in plan.ts" is not, and is not attempted.
-  2. **Style coherence across the set** — measurable, and the interesting one. Not "is this image
+  2. **Style coherence WITHIN the set** — measurable, and the interesting one. It also carries
+     more weight the fewer models there are: with a single challenger, "which is better" collapses
+     into a per-asset beauty contest unless the set-level judgement is doing real work. Not "is this image
      good" but "does this image look like it came from the same hand as the other 93". Measured as
      the SPREAD of four quantities across the set: how far the model renders each accent from the
      hex it was given, the hue it drags that accent to, how much ink it puts down for a given kind,
@@ -298,8 +300,14 @@ def build_sheet(kind: str, readings: list[SetReading], tile_width: int = 420) ->
     if not rows:
         return None
 
-    first = next(a for _, cells in rows for a in cells if a)
-    owner = next(r for r, cells in zip(readings, rows[0][1]) if cells is not None) if False else readings[0]
+    # The aspect comes from whichever set actually has the first asset — not from readings[0],
+    # which may be a set that has not generated it yet.
+    owner, first = next(
+        (reading, asset)
+        for _, cells in rows
+        for reading, asset in zip(readings, cells)
+        if asset is not None
+    )
     with Image.open(owner.provider.root / first["path"]) as probe:
         aspect = probe.size[1] / probe.size[0]
     tile_height = round(tile_width * aspect)
@@ -461,8 +469,8 @@ def main() -> int:
     if len(readings) < 2:
         print(
             f"\nOnly {readings[0].provider.id} exists, so nothing has been compared — the numbers "
-            "\nabove are that set's baseline. The two candidates cannot be generated until their "
-            "\nManaged Compute endpoints are live and backends.ts's UNKNOWNS are answered."
+            "\nabove are that set's baseline. A candidate set cannot be generated until its "
+            "\nendpoint serves and backends.ts's UNKNOWNS are answered."
         )
     return 0
 

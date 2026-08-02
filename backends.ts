@@ -1,18 +1,26 @@
 /**
- * The provider seam: one interface, three implementations, one of which works.
+ * The provider seam: one interface, N implementations, one of which works.
  *
  * ## Why this file exists at all
  *
  * `generate.ts` used to call `fluxBackend` from the studio service directly, which was right while
- * there was one model. There are now three, and two of them are not FLUX-shaped: a Foundry Global
- * Managed Compute deployment gets its OWN scoring URI and its OWN key, and is NOT reachable on the
+ * there was one model. There is now a registry of them, and the non-FLUX ones are not FLUX-shaped:
+ * a Foundry Global Managed Compute deployment is reached on its own host, with its own key, on
+ * `/managed-deployments/<deployment>/v1/chat/completions` — not the
  * `/providers/blackforestlabs/v1/flux-2-pro` route the reference provider uses. So the thing that
  * varies — the envelope a prompt is posted inside — is named and isolated here, and everything
  * that must NOT vary stays outside it.
  *
+ * **N, not three, and not two.** The comparison was briefed as three-way, is two-way today because
+ * Cosmos 3 Super failed to come up on A100_80GB and was deleted, and will be three-way again: the
+ * estate has a stated 3D and animation gap FLUX cannot fill
+ * (docs/ecosystem/19-new-products.md:97). Nothing in this file, in providers.json, in the manifest
+ * schema or in compare.py counts providers. A withdrawn one keeps its entry, because the wire
+ * facts in it were measured and are cheaper to re-read than to re-establish.
+ *
  * ## What must not vary, and how this file guarantees it
  *
- * The whole comparison rests on the three models receiving the same prompt. `GenerationRequest`
+ * The whole comparison rests on every model receiving the same prompt. `GenerationRequest`
  * carries `prompt` as an opaque string that no backend may alter, and every backend exposes
  * `bodyFor()` so that claim is testable rather than trusted: `parity.test.ts` asserts, for each
  * implemented backend, that the prompt in the body is `===` the prompt in the request. A backend
@@ -50,13 +58,13 @@ import {
 } from '../studio/src/backend.ts'
 import type { AssetSpec } from '../studio/src/specs.ts'
 
-import type { Provider } from './providers.ts'
+import { ProviderWithdrawnError, type Provider } from './providers.ts'
 
 /* ------------------------------------------------------------------ the request and the result */
 
 /**
- * One asset, asked for. Identical for all three providers by construction: there is no provider
- * field on it, so there is nowhere for a provider-specific tweak to hide.
+ * One asset, asked for. Identical for every provider by construction: there is no provider field
+ * on it, so there is nowhere for a provider-specific tweak to hide.
  */
 export interface GenerationRequest {
   /** Verbatim, and never rewritten by a backend. The one thing parity depends on. */
@@ -117,9 +125,10 @@ export const measureC2pa = (bytes: Buffer): boolean => bytes.includes(C2PA_MARKE
  *
  * 1. **`api-key`, NOT `Authorization: Bearer`.** Bearer is a flat 401 on this host. Same header
  *    name as the reference provider, different host and different key.
- * 2. **The route carries the deployment name**, so one host serves both candidates and the
- *    provider registry has to name which deployment it means. `qwen--qwen-image-2512` is verified;
- *    `nvidia--cosmos3-super` is an ASSUMPTION and providers.json says so.
+ * 2. **The route carries the deployment name**, so one host serves every candidate and the
+ *    provider registry has to name which deployment it means. Both `qwen--qwen-image-2512` and
+ *    `nvidia--cosmos3-super` were verified against a bogus-name control; the near-miss spelling
+ *    `nvidia--cosmos-3-super`, which is what anyone would type, is a 404.
  * 3. **A sibling `/v1/messages` route exists** (the Anthropic spelling) and is also real — both
  *    answer 400 to a GET rather than 404. Which of the two a given model actually serves images on
  *    is part of the open unknown below.
@@ -474,6 +483,10 @@ export function referenceBackend(
 /* ------------------------------------------------------------------ selection */
 
 export function backendFor(provider: Provider, env: NodeJS.ProcessEnv = process.env): ProviderBackend {
+  // Before anything else. A withdrawn provider is not a configuration problem to be diagnosed from
+  // a 404 forty seconds later; it is a deployment that is not there.
+  if (provider.status === 'withdrawn') throw new ProviderWithdrawnError(provider)
+
   const read = (key: string | undefined, fallback = ''): string =>
     (key ? (env[key] ?? '').trim() : '') || fallback
 

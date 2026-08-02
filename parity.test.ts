@@ -39,7 +39,7 @@ import {
   MissingReferencePromptError,
   RepromptNotForCandidateError,
 } from './prompts.ts'
-import { PROVIDERS, REFERENCE, providerById } from './providers.ts'
+import { PROVIDERS, REFERENCE, providerById, live, ProviderWithdrawnError } from './providers.ts'
 import {
   backendFor,
   managedComputeBackend,
@@ -58,7 +58,10 @@ import {
   type GenerationRequest,
 } from './backends.ts'
 
+// Derived from the registry, never counted. Cosmos 3 Super failed to deploy and is `withdrawn`;
+// a third model will be tried again, so the tests below assert SHAPE rather than arity.
 const CANDIDATES = PROVIDERS.filter((p) => p.id !== REFERENCE.id)
+const LIVE_CANDIDATES = CANDIDATES.filter((p) => p.status === 'live')
 const digest = (value: string): string => createHash('sha256').update(value).digest('hex')
 
 const sampleRequest = (prompt: string): GenerationRequest => ({
@@ -213,10 +216,12 @@ test('an unimplemented backend throws rather than guessing a wire shape', async 
       (err: unknown) => err instanceof Error,
     )
     // And through the front door, which is what generate.ts calls.
-    assert.throws(
-      () => backendFor(candidate, {}).bodyFor(sampleRequest('anything')),
-      UnimplementedBackendError,
-    )
+    if (candidate.status === 'live') {
+      assert.throws(
+        () => backendFor(candidate, {}).bodyFor(sampleRequest('anything')),
+        UnimplementedBackendError,
+      )
+    }
   }
 })
 
@@ -248,7 +253,13 @@ test('the unimplemented error names what has to be established, and leaks nothin
 test('providers.json and the adapters agree about which backends work', () => {
   assert.equal(REFERENCE.implemented, true)
   assert.equal(REFERENCE.shipped, true)
-  assert.equal(CANDIDATES.length, 2, 'the comparison is three-way')
+  // Deliberately NOT an arity assertion. The comparison was three-way, is two-way because Cosmos
+  // failed to deploy, and will be three-way again — the estate has a 3D/animation gap FLUX cannot
+  // fill. A test that pinned the count would have to be edited every time that changes, which is
+  // how a design gets quietly collapsed back into two hardcoded providers.
+  assert.ok(CANDIDATES.length >= 1, 'there is nothing to compare the reference against')
+  assert.ok(live().length >= 1)
+  assert.ok(live().every((p) => p.status === 'live'))
   for (const candidate of CANDIDATES) {
     assert.equal(candidate.adapter, 'foundry-managed-compute')
     assert.equal(candidate.shipped, false)
@@ -257,6 +268,13 @@ test('providers.json and the adapters agree about which backends work', () => {
     assert.equal(candidate.billing.unit, 'deployment hour')
     assert.equal(candidate.billing.hourlyRate, null, 'a rate was filled in; check it was measured')
   }
+  // Withdrawn is a distinct state from unimplemented: the first is "the deployment is gone", the
+  // second is "we do not know its wire shape". Cosmos is both, and only the first is why it cannot
+  // be run.
+  const cosmos = providerById('cosmos-3-super')
+  assert.equal(cosmos.status, 'withdrawn')
+  assert.throws(() => backendFor(cosmos, {}), ProviderWithdrawnError)
+  assert.equal(providerById('qwen-image-2512').status, 'live')
   assert.equal(REFERENCE.billing.unit, 'provider image unit')
 })
 
@@ -281,6 +299,7 @@ test('the scoring URI is built from the measured route, with the deployment name
   // will be pointed at a name nobody checked.
   const cosmos = providerById('cosmos-3-super')
   assert.equal(cosmos.deploymentVerified, true)
+  assert.equal(cosmos.status, 'withdrawn', 'the deployment was deleted after failing to come up')
   assert.notEqual(cosmos.deployment, qwen.deployment)
   // The near miss. `nvidia--cosmos-3-super` is the spelling anyone would type and it is a measured
   // 404 DeploymentNotFound; the extra hyphen is the whole difference. Pinned because this is the
