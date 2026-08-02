@@ -69,9 +69,12 @@
       "shipped": false,
       "implemented": false,
       "concurrency": 2,
+      "deployment": "qwen--qwen-image-2512",
+      "deploymentVerified": true,
+      "route": "/managed-deployments/{deployment}/v1/chat/completions",
       "env": {
-        "scoringUri": "QWEN_IMAGE_SCORING_URI",
-        "apiKey": "QWEN_IMAGE_API_KEY"
+        "endpoint": "FOUNDRY2_BASE_URL",
+        "apiKey": "FOUNDRY2_API_KEY"
       },
       "billing": {
         "unit": "deployment hour",
@@ -81,9 +84,11 @@
         "hourlyRate": null
       },
       "notes": [
-        "Not implemented. See backends.ts for the list of wire facts that must be established",
-        "against the live endpoint before this can be written, and COMPARISON.md section 6 for why",
-        "its cost may not be added to or divided against the reference provider's."
+        "Route and auth are MEASURED against the live deployment, not read off a model card:",
+        "`api-key: <key>` is correct and `Authorization: Bearer` is explicitly 401. There is no",
+        "swagger.json — /managed-deployments/<name>/swagger.json is 404 even with a valid key — so",
+        "the request body's field names are still the one open unknown. See backends.ts.",
+        "Cost may not be added to or divided against the reference provider's: COMPARISON.md §6."
       ]
     },
 
@@ -96,9 +101,12 @@
       "shipped": false,
       "implemented": false,
       "concurrency": 2,
+      "deployment": "nvidia--cosmos3-super",
+      "deploymentVerified": true,
+      "route": "/managed-deployments/{deployment}/v1/chat/completions",
       "env": {
-        "scoringUri": "COSMOS_SCORING_URI",
-        "apiKey": "COSMOS_API_KEY"
+        "endpoint": "FOUNDRY2_BASE_URL",
+        "apiKey": "FOUNDRY2_API_KEY"
       },
       "billing": {
         "unit": "deployment hour",
@@ -108,11 +116,19 @@
         "hourlyRate": null
       },
       "notes": [
-        "Not implemented. See backends.ts.",
-        "Every env value above is read from the gitignored studio/.env.local. A Managed Compute",
-        "deployment gets its OWN scoring URI and its OWN key; neither is the Foundry resource key",
-        "the reference provider uses, and neither is ever written to this file, a manifest, a log",
-        "line or a README."
+        "deploymentVerified was set from a MEASUREMENT, not from the fact that it looked right.",
+        "The three answers that establish it, all with body {\"model\": \"<name>\"}:",
+        "  nvidia--cosmos3-super          -> 400 BadRequestForDependentService (name resolves)",
+        "  nvidia--cosmos-3-super         -> 404 DeploymentNotFound (the NATURAL spelling is wrong)",
+        "  definitely--not--a--deployment -> 404 DeploymentNotFound (the control)",
+        "So a 400 that is not DeploymentNotFound means the gateway reached the model service and",
+        "the service rejected our body — which is the good state, and the reason probe.ts keys on",
+        "the error CODE rather than on the status. The near-miss spelling costing a 404 is the same",
+        "trap the reference provider set with flux-2-pro against FLUX.2-pro.",
+        "Cosmos was routing to its model service while Qwen was still returning 500 warming, so the",
+        "two are not ready at the same time and neither run should wait for the other.",
+        "Every env value above is read from the gitignored studio/.env.local. That file's key is",
+        "never written to this file, a manifest, a log line, a README or a report."
       ]
     }
   ]

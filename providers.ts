@@ -36,6 +36,19 @@ export interface Provider {
   readonly concurrency: number
   readonly env: Readonly<Record<string, string>>
   readonly billing: ProviderBilling
+  /**
+   * Managed Compute only: the deployment name that goes in the route. One host serves both
+   * candidates, so the name is what distinguishes them.
+   */
+  readonly deployment?: string
+  /**
+   * False where the deployment name above is an assumption rather than a measured fact. Seven of
+   * the eight FLUX model names probed on the reference resource answered 404, so an unverified
+   * name is a real risk and not a formality. `probe.ts` is what turns this true.
+   */
+  readonly deploymentVerified?: boolean
+  /** `/managed-deployments/{deployment}/v1/chat/completions`. */
+  readonly route?: string
 }
 
 interface RegistryDocument {

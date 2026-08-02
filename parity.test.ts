@@ -47,6 +47,14 @@ import {
   UnimplementedBackendError,
   UNKNOWNS,
   measureC2pa,
+  scoringUri,
+  managedHeaders,
+  MODEL_FIELD,
+  modelValueFor,
+  isWarming,
+  awaitWarm,
+  resetWarmingGate,
+  WARMING,
   type GenerationRequest,
 } from './backends.ts'
 
@@ -193,12 +201,17 @@ test('the reference backend puts the prompt in the body verbatim', () => {
 
 /* ------------------------------------------------------------------ the stubs */
 
-test('an unimplemented backend throws rather than guessing a wire shape', () => {
+test('an unimplemented backend throws rather than guessing a wire shape', async () => {
   for (const candidate of CANDIDATES) {
     assert.equal(candidate.implemented, false, `${candidate.id} claims to be implemented`)
     const backend = managedComputeBackend(candidate)
     assert.throws(() => backend.bodyFor(sampleRequest('anything')), UnimplementedBackendError)
-    assert.throws(() => backend.generate(sampleRequest('anything'), AbortSignal.timeout(1)), UnimplementedBackendError)
+    // And through generate, which must refuse BEFORE it makes a request: an unknown body has to
+    // cost nothing, and on a per-hour deployment "nothing" includes not making a billable call.
+    await assert.rejects(
+      backend.generate(sampleRequest('anything'), AbortSignal.timeout(1)),
+      (err: unknown) => err instanceof Error,
+    )
     // And through the front door, which is what generate.ts calls.
     assert.throws(
       () => backendFor(candidate, {}).bodyFor(sampleRequest('anything')),
@@ -216,8 +229,11 @@ test('the unimplemented error names what has to be established, and leaks nothin
     message = (err as Error).message
   }
 
-  assert.ok(UNKNOWNS.length >= 12, 'the checklist has been trimmed; that is how a body gets guessed')
-  for (const heading of ['ROUTE', 'AUTH HEADER', 'BODY SHAPE', 'PROMPT FIELD NAME', 'C2PA', 'PROMPT LENGTH']) {
+  // Route and auth came off this list when they were measured against the live deployment; the
+  // body did not, and it is the one that blocks the rest.
+  assert.ok(UNKNOWNS.length >= 8, 'the checklist has been trimmed; that is how a body gets guessed')
+  assert.ok(UNKNOWNS[0]!.startsWith('BODY FIELD NAMES'), 'the blocking unknown is no longer first')
+  for (const heading of ['BODY FIELD NAMES', 'RESPONSE SHAPE', 'C2PA', 'PROMPT LENGTH', 'CONCURRENCY']) {
     assert.ok(message.includes(heading), `the error no longer mentions ${heading}`)
   }
   // Nothing that could be a credential. The bound is the same one studio's redact uses: the live
@@ -242,6 +258,126 @@ test('providers.json and the adapters agree about which backends work', () => {
     assert.equal(candidate.billing.hourlyRate, null, 'a rate was filled in; check it was measured')
   }
   assert.equal(REFERENCE.billing.unit, 'provider image unit')
+})
+
+/* ------------------------------------------------------------------ the managed compute wire */
+
+test('the scoring URI is built from the measured route, with the deployment name in it', () => {
+  const qwen = providerById('qwen-image-2512')
+  assert.equal(qwen.deployment, 'qwen--qwen-image-2512')
+  assert.equal(qwen.deploymentVerified, true)
+  assert.equal(
+    scoringUri({
+      baseUrl: 'https://example.services.ai.azure.com/',
+      apiKey: 'x',
+      deployment: qwen.deployment!,
+      route: qwen.route!,
+    }),
+    'https://example.services.ai.azure.com/managed-deployments/qwen--qwen-image-2512/v1/chat/completions',
+  )
+
+  // Cosmos shares the host, so the deployment name is the only thing separating the two — and it
+  // is still an assumption. If this ever flips to true without probe.ts having said so, the run
+  // will be pointed at a name nobody checked.
+  const cosmos = providerById('cosmos-3-super')
+  assert.equal(cosmos.deploymentVerified, true)
+  assert.notEqual(cosmos.deployment, qwen.deployment)
+  // The near miss. `nvidia--cosmos-3-super` is the spelling anyone would type and it is a measured
+  // 404 DeploymentNotFound; the extra hyphen is the whole difference. Pinned because this is the
+  // second time this estate has lost time to a model name that differs by one character.
+  assert.equal(cosmos.deployment, 'nvidia--cosmos3-super')
+  assert.notEqual(cosmos.deployment, 'nvidia--cosmos-3-super')
+})
+
+test('the one settled body field is `model`, and its value is the deployment name', () => {
+  // Measured, not assumed: {} -> 400 "Missed model deployment" named the field, the catalogue name
+  // Qwen-Image-2512 -> 404, and the deployment name -> 500 warming. So the field is required and
+  // the value is the deployment. Everything else about the body is still unknown, which is why
+  // bodyFor still throws.
+  assert.equal(MODEL_FIELD, 'model')
+  const config = {
+    baseUrl: 'https://example.services.ai.azure.com',
+    apiKey: 'x',
+    deployment: 'qwen--qwen-image-2512',
+    route: '/managed-deployments/{deployment}/v1/chat/completions',
+  }
+  assert.equal(modelValueFor(config), 'qwen--qwen-image-2512')
+  assert.notEqual(modelValueFor(config), 'Qwen-Image-2512', 'the catalogue name is a measured 404')
+})
+
+test('a warming 500 is not a failure, and a real 500 is', () => {
+  assert.equal(isWarming(500, 'Model service is unavailable'), true)
+  assert.equal(isWarming(500, 'MODEL SERVICE IS UNAVAILABLE'), true, 'the match must be case-insensitive')
+  assert.equal(isWarming(503, 'model is not ready'), true)
+  // The distinction the whole retry policy turns on. A 500 that is a genuine fault must NOT be
+  // waited out for half an hour, and a 400 is never warming however it is worded.
+  assert.equal(isWarming(500, 'internal server error'), false)
+  assert.equal(isWarming(400, 'model service is unavailable'), false)
+  assert.equal(isWarming(200, ''), false)
+})
+
+test('concurrent workers share one warming wait rather than each starting their own', async () => {
+  resetWarmingGate()
+  let polls = 0
+  let slept = 0
+  let clock = 0
+  const poll = async (): Promise<boolean> => {
+    polls += 1
+    return polls >= 3 // serving on the third look
+  }
+  const sleep = async (ms: number): Promise<void> => {
+    slept += 1
+    clock += ms
+  }
+  const logs: string[] = []
+
+  // Four workers hit the warming container at once. Ten workers hammering a container that is
+  // loading weights do not make it load faster, and on dedicated hardware there is no 429 to tell
+  // them to stop.
+  await Promise.all(
+    Array.from({ length: 4 }, () => awaitWarm(poll, (m) => logs.push(m), () => clock, sleep)),
+  )
+  assert.equal(polls, 3, 'the endpoint was polled once per wait, not once per worker per wait')
+  assert.equal(slept, 3)
+  assert.ok(logs.some((line) => line.includes('serving')))
+  resetWarmingGate()
+})
+
+test('warming gives up at the budget rather than billing for ever', async () => {
+  resetWarmingGate()
+  let clock = 0
+  const logs: string[] = []
+  await awaitWarm(
+    async () => false, // never comes up
+    (m) => logs.push(m),
+    () => clock,
+    async (ms) => {
+      clock += ms
+    },
+  )
+  assert.ok(clock > WARMING.budgetMs, 'it stopped before the budget was spent')
+  assert.ok(
+    logs.some((line) => line.includes('past the budget')),
+    'it gave up silently; a deployment that never warms must say so, because it is still billing',
+  )
+  resetWarmingGate()
+})
+
+test('the managed host is addressed with api-key, never a Bearer token', () => {
+  // Measured: Bearer is a flat 401 there, and it is the natural mistake because Bearer is what
+  // every other Azure ML scoring endpoint wants. Asserted on the object the code actually sends
+  // rather than by grepping the source, so a comment mentioning Bearer cannot fail the build and
+  // a real Bearer header cannot pass it.
+  const headers = managedHeaders({
+    baseUrl: 'https://example.services.ai.azure.com',
+    apiKey: 'a-key',
+    deployment: 'qwen--qwen-image-2512',
+    route: '/managed-deployments/{deployment}/v1/chat/completions',
+  })
+  assert.deepEqual(Object.keys(headers).sort(), ['api-key', 'content-type'])
+  assert.equal(headers['api-key'], 'a-key')
+  assert.equal(headers['authorization'], undefined)
+  assert.equal(headers['Authorization'], undefined)
 })
 
 /* ------------------------------------------------------------------ c2pa is measured */
