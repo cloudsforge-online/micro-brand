@@ -54,6 +54,18 @@ FAVICON_STEPS = (192, 32)
 
 C2PA_MARKER = b"c2pa"
 
+# ---- the icon: 256 resampled from the 1024 mark, for the currency identities only.
+#
+# 256x256 is what docs/ecosystem/23-tessera.md:321 specifies for `ember-coin` and `spark`. It is
+# resampled from the mark rather than generated at 256, for the same reason the favicons are
+# resampled from 512: a model asked directly for a 256px image returns a worse one than a Lanczos
+# downscale of a 1024px one. No separate heavier source is generated the way `favicon` gets one,
+# because 256 is large enough to hold the full mark's detail — that argument is about 32 pixels.
+ICON_STEP = 256
+# Hand-copied from plan.ts's CURRENCY, and asserted against it by parity.test.ts so it cannot
+# drift. Only these surfaces get an icon; the registry surfaces get favicons instead.
+ICON_SURFACES = ("currency-ember", "currency-spark")
+
 
 def load_parents(manifest: Path) -> dict[tuple[str, str], dict]:
     """Index the existing manifest by (surface, kind) so a derivative inherits its source's record.
@@ -68,9 +80,52 @@ def load_parents(manifest: Path) -> dict[tuple[str, str], dict]:
     return {(a["surface"], a["kind"]): a for a in document.get("assets", [])}
 
 
+def load_recorded(manifest: Path) -> dict[tuple[str, str, str], dict]:
+    """Index the manifest by FULL identity — surface, kind AND declared size.
+
+    `load_parents` deliberately keys on (surface, kind) and so collapses the three `favicon`
+    entries onto one; that is fine for inheriting a prompt, and useless for answering "is THIS
+    derivative already on record". This is the index `already_derived` needs.
+    """
+    if not manifest.exists():
+        return {}
+    document = json.loads(manifest.read_text())
+    return {(a["surface"], a["kind"], a["declaredSize"]): a for a in document.get("assets", [])}
+
+
 def digest(path: Path) -> tuple[str, int, bool]:
     data = path.read_bytes()
     return hashlib.sha256(data).hexdigest(), len(data), C2PA_MARKER in data
+
+
+def already_derived(
+    recorded: dict[tuple[str, str, str], dict], surface: str, kind: str, declared: tuple[int, int], target: Path
+) -> dict | None:
+    """The recorded entry, if this derivative is already on disk exactly as the manifest records it.
+
+    ## Why this guard exists — it was found by tripping it, not predicted
+
+    Deriving is deterministic in principle, so re-running it was assumed to be free. It is not.
+    Generating two new currency marks re-ran this script over every surface and **rewrote 39 of the
+    94 shipped reference files with different pixels** — `assets/site/favicon-32x32.png` went from
+    657 bytes to 1090, and a pixel-by-pixel comparison of the two came back unequal. The committed
+    set is entirely self-consistent (all 94 recorded sha256 values match their committed bytes), so
+    the drift is on this side: a Pillow whose Lanczos kernel or PNG encoder no longer matches the
+    one the reference set was cut with. Nothing warned; `git status` was the only evidence.
+
+    That is intolerable here. The reference set is permanent by instruction, roughly twenty sibling
+    repositories point at those exact files, and four CI jobs byte-compare against them — so a
+    silent rewrite would have turned every one of those comparisons red for a reason nobody had
+    changed. A derivative that is already on record is therefore LEFT ALONE and its recorded entry
+    is returned untouched, so re-running is genuinely free and genuinely idempotent.
+
+    `--force` is the deliberate way to recut one, and it is deliberately not the default.
+    """
+    entry = recorded.get((surface, kind, f"{declared[0]}x{declared[1]}"))
+    if entry is None or not target.exists():
+        return None
+    sha, _, _ = digest(target)
+    return entry if sha == entry["sha256"] else None
 
 
 def entry(
@@ -116,12 +171,24 @@ def entry(
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--provider", default=None, help="provider id from providers.json")
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="recut derivatives that are already on record. Rewrites shipped files; see already_derived.",
+    )
     args = parser.parse_args(argv[1:])
     provider = providers.by_id(args.provider) if args.provider else providers.reference()
 
     root, assets = provider.root, provider.assets
     parents = load_parents(provider.manifest)
+    recorded = load_recorded(provider.manifest)
     out: list[dict] = []
+
+    def keep_or_cut(surface: str, kind: str, declared: tuple[int, int], target: Path) -> dict | None:
+        """The recorded entry if this derivative is already exactly on record, else None."""
+        if args.force:
+            return None
+        return already_derived(recorded, surface, kind, declared, target)
 
     if not assets.is_dir():
         # A candidate with nothing generated yet is not an error. It is the normal state of a
@@ -135,12 +202,15 @@ def main(argv: list[str]) -> int:
         # ---- the OG card: centre-crop 1200x640 down to the 1200x630 a scraper will accept.
         og_source = surface_dir / f"og-{OG_SOURCE[0]}x{OG_SOURCE[1]}-asdelivered.png"
         parent = parents.get((surface, "og-source"))
-        if og_source.exists() and parent:
+        target = surface_dir / f"og-{OG_DECLARED[0]}x{OG_DECLARED[1]}.png"
+        kept = keep_or_cut(surface, "og", OG_DECLARED, target)
+        if kept is not None:
+            out.append(kept)
+        elif og_source.exists() and parent:
             with Image.open(og_source) as image:
                 width, height = image.size
                 top = (height - OG_DECLARED[1]) // 2
                 cropped = image.crop((0, top, width, top + OG_DECLARED[1]))
-                target = surface_dir / f"og-{OG_DECLARED[0]}x{OG_DECLARED[1]}.png"
                 cropped.save(target, format="PNG", optimize=True)
             out.append(
                 entry(
@@ -163,24 +233,58 @@ def main(argv: list[str]) -> int:
         # ---- the favicons: 192 and 32 resampled from the 512 source.
         favicon = surface_dir / "favicon-512x512.png"
         parent = parents.get((surface, "favicon"))
-        if favicon.exists() and parent:
-            for step in FAVICON_STEPS:
-                with Image.open(favicon) as image:
-                    resized = image.convert("RGBA").resize((step, step), Image.LANCZOS)
-                    target = surface_dir / f"favicon-{step}x{step}.png"
+        for step in FAVICON_STEPS:
+            target = surface_dir / f"favicon-{step}x{step}.png"
+            kept = keep_or_cut(surface, "favicon", (step, step), target)
+            if kept is not None:
+                out.append(kept)
+                continue
+            if not (favicon.exists() and parent):
+                continue
+            with Image.open(favicon) as image:
+                resized = image.convert("RGBA").resize((step, step), Image.LANCZOS)
+                resized.save(target, format="PNG", optimize=True)
+            out.append(
+                entry(
+                    parent,
+                    root=root,
+                    kind="favicon",
+                    path=target,
+                    declared=(step, step),
+                    source=favicon,
+                    note=(
+                        f"Lanczos downscale of the 512 source to {step}. Pillow, not macOS "
+                        "sips, so the step runs anywhere. Re-encoding drops the C2PA chunk; "
+                        "the invisible pixel watermark is unaffected."
+                    ),
+                )
+            )
+
+        # ---- the currency icon: 256 resampled from the 1024 mark. Currency surfaces only.
+        if surface in ICON_SURFACES:
+            mark = surface_dir / "mark-1024x1024.png"
+            parent = parents.get((surface, "mark"))
+            target = surface_dir / f"icon-{ICON_STEP}x{ICON_STEP}.png"
+            kept = keep_or_cut(surface, "icon", (ICON_STEP, ICON_STEP), target)
+            if kept is not None:
+                out.append(kept)
+            elif mark.exists() and parent:
+                with Image.open(mark) as image:
+                    resized = image.convert("RGBA").resize((ICON_STEP, ICON_STEP), Image.LANCZOS)
                     resized.save(target, format="PNG", optimize=True)
                 out.append(
                     entry(
                         parent,
                         root=root,
-                        kind="favicon",
+                        kind="icon",
                         path=target,
-                        declared=(step, step),
-                        source=favicon,
+                        declared=(ICON_STEP, ICON_STEP),
+                        source=mark,
                         note=(
-                            f"Lanczos downscale of the 512 source to {step}. Pillow, not macOS "
-                            "sips, so the step runs anywhere. Re-encoding drops the C2PA chunk; "
-                            "the invisible pixel watermark is unaffected."
+                            f"Lanczos downscale of the 1024 mark to {ICON_STEP}, the size "
+                            "docs/ecosystem/23-tessera.md:321 specifies for the economy icon set. "
+                            "Re-encoding drops the C2PA chunk; the invisible pixel watermark is "
+                            "unaffected and the 1024 source is kept beside this file."
                         ),
                     )
                 )
