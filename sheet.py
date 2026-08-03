@@ -13,7 +13,7 @@ is a different question, use compare.py.
 
     python3 sheet.py                                  # every kind, every set present
     python3 sheet.py wordmark og                      # only these kinds
-    python3 sheet.py --provider qwen-image-2512       # only this set
+    python3 sheet.py --provider flux-2-pro           # only this set
 """
 
 from __future__ import annotations

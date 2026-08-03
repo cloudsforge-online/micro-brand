@@ -188,7 +188,11 @@ def refresh_manifest(paths: list[Path]) -> int:
             entry["c2pa"] = c2pa
             changed += 1
     if changed:
-        manifest.write_text(json.dumps(document, indent=2) + "\n")
+        # `ensure_ascii=False`, to match generate.ts's JSON.stringify. Without it this tool
+        # re-escapes every non-ASCII character generate.ts wrote raw, so MANIFEST.json
+        # oscillates between two byte-different encodings of identical data depending on
+        # which tool touched it last, and every run shows a diff nobody made.
+        manifest.write_text(json.dumps(document, indent=2, ensure_ascii=False) + "\n")
     return changed
 
 

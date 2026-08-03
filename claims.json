@@ -19,7 +19,17 @@
     "prompt-uniformity counts need Pillow over the marks and node over prompts.ts respectively.",
     "Deriving them would couple this shared checker to one repository's own tools. COMPARISON.md",
     "says at each of those figures that it is unpinned and where to read it from instead, which is",
-    "a weaker guarantee honestly labelled rather than a strong one quietly faked."
+    "a weaker guarantee honestly labelled rather than a strong one quietly faked.",
+    "",
+    "FOUR CLAIMS WERE DELETED WITH THE THING THEY POINTED AT, AND THAT IS RECORDED HERE RATHER",
+    "THAN LEFT AS A GAP. materialise.py used to state the Qwen challenger's completeness — 97 of",
+    "micro-brand's 98 entries, 134 of Emberkin's 137 — and four claims re-derived those figures",
+    "from candidates/qwen-image-2512/MANIFEST.json. The owner withdrew that model and the candidate",
+    "trees were deleted, so the derivations became permanently Unverifiable, which claims.py",
+    "correctly refuses to treat as a pass. Deleting the claims is the honest move ONLY because the",
+    "figures were transcribed into materialise.py's prose first and labelled there as no longer",
+    "re-derivable. A number that survives its source and keeps its confident tone is the defect",
+    "this file exists to prevent; a number that survives its source and says so is a record."
   ],
   "claims": [
     {
@@ -328,26 +338,6 @@
       "document": "materialise.py",
       "find": "are generated and (\\d+) derived",
       "derive": "estate.derived"
-    },
-    {
-      "document": "materialise.py",
-      "find": "the Qwen brand set is (\\d+) of \\d+ today",
-      "derive": "candidate.assets(brand|qwen-image-2512)"
-    },
-    {
-      "document": "materialise.py",
-      "find": "the Qwen brand set is \\d+ of (\\d+) today",
-      "derive": "sibling.assets(brand)"
-    },
-    {
-      "document": "materialise.py",
-      "find": "Emberkin set is (\\d+) of \\d+\\.",
-      "derive": "candidate.assets(emberkin-assets|qwen-image-2512)"
-    },
-    {
-      "document": "materialise.py",
-      "find": "Emberkin set is \\d+ of (\\d+)\\.",
-      "derive": "sibling.assets(emberkin-assets)"
     }
   ]
 }

@@ -28,7 +28,7 @@ favicon separately would produce something that is not a downscale of its own ma
 `derivedFrom` column would then assert a relationship that is not true of the bytes.
 
     python3 derive.py                                # the reference set
-    python3 derive.py --provider qwen-image-2512     # one candidate set
+    python3 derive.py --provider flux-2-pro         # one named set
 """
 
 from __future__ import annotations

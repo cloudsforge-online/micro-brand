@@ -36,6 +36,7 @@
     "probe": "cd ../studio && node --import tsx ../brand/probe.ts",
     "test": "cd ../studio && node --import tsx --test ../brand/parity.test.ts",
     "verify": "python3 verify.py",
+    "verify:self-test": "python3 verify.py --self-test",
     "sheets": "python3 sheet.py",
     "compare": "python3 compare.py",
     "claims": "python3 claims.py"

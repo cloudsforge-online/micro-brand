@@ -35,7 +35,7 @@
  *
  *   cd ../studio && node --import tsx ../brand/generate.ts --plan
  *   cd ../studio && node --import tsx ../brand/generate.ts                       # the reference
- *   cd ../studio && node --import tsx ../brand/generate.ts --provider qwen-image-2512
+ *   cd ../studio && node --import tsx ../brand/generate.ts --provider flux-2-pro
  *   cd ../studio && node --import tsx ../brand/generate.ts --only site:wordmark,hub:mark
  *   cd ../studio && node --import tsx ../brand/generate.ts --force --only site:wordmark
  *   cd ../studio && node --import tsx ../brand/generate.ts --force --reprompt --only site:wordmark

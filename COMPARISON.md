@@ -1,8 +1,41 @@
-# How the models are judged
+# How the models were judged
 
-Written **before** the challenger sets exist, which is the only time criteria can be written
-honestly. Once the images are on screen it is very easy to discover that the thing the winner
-happens to be good at was the thing that mattered all along.
+> ## CONCLUDED. This is a record of an evaluation that finished, not an open one.
+>
+> **FLUX 2 Pro ships.** The Qwen-Image 2512 challenger was generated in full across all three asset
+> repositories, measured against every criterion below, and lost on criterion 1 by margins nothing
+> else offsets. A 15-asset pilot in a `positive` prompt dialect (§9) tested whether the verdict was
+> partly an artefact of this estate's own prompt style; it was not. **The owner has since withdrawn
+> Qwen-Image 2512 from the estate, and this repository's `candidates/qwen-image-2512/` and
+> `candidates/qwen-image-2512-positive/` trees, their manifests, their deployment records and their
+> two registry entries have been deleted** — as have the sibling repositories'.
+>
+> **Read every challenger figure below as history that was taken, not as something you can
+> re-derive.** `compare.py` reads manifests and there is one manifest left, so it cannot print those
+> columns again; the last run it did print is transcribed into §10. Where a figure used to point at
+> `candidates/qwen-image-2512/DEPLOYMENT.json`, that file is gone and what it recorded is in §10.6.
+> Deleting the images must not delete the reason the estate chose what it chose.
+>
+> **Sections 0 to 7 were written before either candidate set existed and are left in the tense they
+> were written in.** Sections 8 and 9 were written afterwards and say which criteria the result
+> turned on. Rewriting a criterion after the result is the one thing this document exists to
+> prevent, so the two halves are not blended.
+>
+> **What survived the deletion and is still checked on every run:** `claims.py` re-derives every
+> figure here that has a live source, and says so when one does not; `review/compare/artefacts.json`
+> keeps the by-eye tallies with their scope stated; `MANIFEST.json` keeps the recorded literal
+> prompts. The provider seam — `providers.json`, `backends.ts`, the dialect registry, `verify.py`'s
+> `check_parity` — is kept whole because the estate has a stated 3D and animation gap FLUX cannot
+> fill and a next challenger is a question of when rather than if.
+>
+> **And one consequence that is easy to miss.** `check_parity` compared sets to each other and there
+> is one set now, so it is DORMANT: it returns clean because it was handed one document, not because
+> it looked and found nothing. `verify.py` prints that word on every run instead of a zero, and
+> `verify.py --self-test` proves on every CI run that it still fails when given something to fail on.
+
+The criteria were written **before** the challenger sets existed, which is the only time criteria
+can be written honestly. Once the images are on screen it is very easy to discover that the thing
+the winner happens to be good at was the thing that mattered all along.
 
 The question the owner asked is *"which is best and why"*. This document fixes what "best" means,
 in advance, for all 336 assets across the three asset repositories — `micro-brand` (98),
@@ -169,7 +202,7 @@ model's output. It is a real signal at 3× difference and noise at 1.2×.
 | --- | --- | --- |
 | Bills for | each image generated | **each hour the deployment exists** |
 | Unit | provider image unit | deployment hour |
-| Source | `request_meta.cost`, per asset | `candidates/<id>/DEPLOYMENT.json`, written by the operator |
+| Source | `request_meta.cost`, per asset | the operator's deployment record — deleted with the candidate tree, transcribed into §10.6 |
 | Idle cost | zero | full |
 
 `compare.py` prints each in its own unit and derives **no** per-image figure for a per-hour
@@ -262,8 +295,11 @@ lifetime is.
    discards the prohibitions — and the comparison would read that as a style failure rather than as
    truncation. This must be probed before the run, not diagnosed from the output.
 
-5. **Nothing here counts providers.** The comparison was briefed three-way, is two-way because
-   Cosmos 3 Super failed to deploy and was deleted, and will be three-way again — the estate has a
+5. **Nothing here counts providers, and that is why the seam outlived the challenger.** The
+   comparison was briefed three-way, ran two-way because Cosmos 3 Super failed to deploy and was
+   deleted, and is one-way today because the owner withdrew Qwen-Image 2512. The registry, the
+   backend interface, the dialect seam and the parity check are all kept rather than collapsed —
+   the estate has a
    stated 3D and animation gap FLUX cannot fill (`docs/ecosystem/19-new-products.md:97`). The
    registry is the list; a withdrawn provider keeps its entry because the wire facts in it were
    measured, and measured facts are cheaper to re-read than to re-establish.
@@ -432,7 +468,7 @@ as a plinth-mounted 3D ring with no frame around it. The positive dialect added 
 | ink coverage spread (in-kind) | 0.0652 | 0.1092 | **0.1946** |
 | KB per megapixel (median) | 292 | 958 | **851** |
 | median retention at 16px | — | — | 77% (brand marks; FLUX 73%) |
-| cost | per image | shared deployment hours | **zero marginal hours** — the deployment was already running and, per its own `DEPLOYMENT.json`, could not be torn down |
+| cost | per image | shared deployment hours | **zero marginal hours** — the deployment was already running and, per the deployment record transcribed in §10.6, could not be torn down |
 
 **The one number that is not a defeat.** KB/megapixel — the flat-versus-photographic proxy — fell
 from 958 to 851. That is the register moving in the right direction by about 11%, against a FLUX
@@ -481,3 +517,173 @@ measurement, because "the register did not move under a positively-phrased brief
 statement about Qwen than anything in §§1–8, and it could only be made by running it.
 
 **The verdict of §§1–8 is unchanged: FLUX, decisively.**
+
+---
+
+## 10. What the comparison measured, transcribed before the sets were deleted
+
+`compare.py` produced these columns from the three manifests and the delivered pixels. Two of them
+no longer exist, so the tool cannot print this again and the last run it printed is copied here.
+
+**Nothing in this section is re-derivable and `claims.py` does not pin any of it.** That is stated
+rather than left to be discovered, because a figure that outlives its source while keeping a
+confident tone is precisely the defect `claims.json` was written after. Every figure elsewhere in
+this document that HAS a live source is still pinned and still re-derived on demand; these are the
+ones that stopped having one, and they are labelled instead of quietly demoted.
+
+**The third column is a DIFFERENT PROMPT DIALECT.** It is not a controlled comparison with the
+first two and no row here reads across all three. It answers *"which is better when each model is
+prompted the way it wants"*, which is a different question from *"which is better on identical
+input"* — see §9.1 for why that is a legitimate second question rather than a softening of §7.
+
+### 10.1 Prompt adherence
+
+| | FLUX 2 Pro | Qwen-Image 2512 | Qwen positive |
+| --- | ---: | ---: | ---: |
+| entries in the set | 98 | 97 | 4 |
+| generated (rest are derived) | 56 | 56 | 2 |
+| ground off-target (>0.12 luma) | 0 | 3 | 0 |
+| median ground luma | 0.0053 | 0.0173 | 0.0125 |
+| below the accent floor | 0 | 27 | 0 |
+| a third hue dominating the mark | 0 | 31 | 0 |
+| delivered size != declared | 0 | 0 | 0 |
+
+**The two rows that decided it.** 27 of the challenger's 56 generations put less of the image in
+the surface's own registry accent than the floor allows, and 31 had a third hue covering more of
+the frame than the accent did — against zero and zero for the reference. A brand mark drawn in a
+colour the registry does not name is not a near miss; it is unidentifiable in the surface switcher,
+which is the one job the mark has. Named examples from the run: `explorer/favicon` came back at
+`#dacbad` and `worlds/social` at `#989898`, both pale grounds against a dark-only system;
+`beacon/mark` was dominated by a hue at 199 degrees that neither the accent nor the company ember
+explains.
+
+### 10.2 Style coherence within the set — spread, not average; lower is one hand
+
+| | FLUX 2 Pro | Qwen-Image 2512 | Qwen positive |
+| --- | ---: | ---: | ---: |
+| accent lightness: bias | +0.063 | -0.102 | -0.061 |
+| accent lightness: SPREAD | 0.108 | 0.165 | 0.013 |
+| accent hue error: mean degrees | 8.4 | 11.5 | 2.5 |
+| accent hue error: SPREAD | 6.9 | 8.3 | 1.1 |
+| ink coverage spread (within kind) | 0.0233 | 0.0792 | 0.1328 |
+| ground luma spread | 0.0050 | 0.0893 | 0.0010 |
+| KB per megapixel (median) | 122 | 834 | 1008 |
+
+**The confound §7.0 warned about, restated so this table is not over-read.** The reference set has
+had `normalise_ground.py` run over it and a candidate set as generated has not, so the ground-luma
+row is NOT a like-for-like model measurement; the honest reading is each candidate's absolute figure
+on its own. The accent, ink and KB/MP rows are unaffected — normalisation rewrites near-ground
+pixels only and leaves the artwork alone.
+
+**KB per megapixel is a proxy and not a verdict, and here it is the loudest single number in the
+run.** Flat geometric art is large areas of one colour and compresses hard; photographic texture
+does not. **122 against 834 is a factor of 6.8 on a brief that says "flat vector"**, which is the
+same finding as §10.4's non-flat tally arriving by a completely different route — one measured off
+file sizes, one scored by eye. Two independent instruments agreeing is worth more than either.
+
+### 10.3 Legibility at the size the asset is used at
+
+| | FLUX 2 Pro | Qwen-Image 2512 | Qwen positive |
+| --- | ---: | ---: | ---: |
+| median contrast retained at 32px | 83% | 81% | 85% |
+| median contrast retained at 16px | 53% | 63% | 77% |
+| marks under 50% at 16px | 11 | 9 | 0 |
+
+**This is the criterion the challenger won, and it is recorded as a win.** At 16px it retained more
+contrast than the reference and put fewer marks under the half-way line. The verdict does not turn
+on it — a mark that is legible at 16px and drawn in the wrong colour in a bevelled three-dimensional
+style is still the wrong mark — but a comparison that only recorded the winner's wins would not be
+a comparison. The reference's own weak marks are named in the run output: `foresight/mark` keeps
+38% at 16px, `hub/mark` 41%.
+
+### 10.4 Artefact rate, tallied by eye
+
+Scored row by row off `review/compare/compare-mark.png` and `compare-wordmark.png`. The first rows
+are counts out of the 12 `mark` assets; the lettering row is out of the 9 `wordmark` assets, which
+are the only kind on that sheet carrying a name. Marks and wordmarks only — not the whole 56 — and
+that scope is stated because a rate with an unstated denominator is not a measurement.
+
+| | FLUX 2 Pro | Qwen-Image 2512 |
+| --- | ---: | ---: |
+| accent absent or wrong hue | 0 | 5 |
+| construction guides drawn | 0 | 6 |
+| frame / border / bounding box | 0 | 5 |
+| ground not the brand near-black | 0 | 3 |
+| idea not recognisable from `plan.ts` | 0 | 3 |
+| inset duplicate of the mark | 0 | 0 |
+| lettering: name misspelt or invented | 1 | 0 |
+| non-flat rendering (3D, bevel, gradient, glow) | 0 | 6 |
+
+**The reference's one defect is in the table too.** It misspelt or invented a name on one of the
+nine wordmarks and the challenger did not. That is the one row where the challenger is clean and
+the winner is not, and it is left in place at full size.
+
+### 10.5 Retries and disclosure, free from the manifests
+
+| | FLUX 2 Pro | Qwen-Image 2512 | Qwen positive |
+| --- | ---: | ---: | ---: |
+| assets needing at least one retry | 16 / 56 | 0 / 56 | 0 / 2 |
+| total retries | 26 | 0 | 0 |
+| failed attempts logged | 5 | 1 | 0 |
+| carries C2PA, measured off the bytes | 2 / 98 | 0 / 97 | 0 / 4 |
+
+**Read §5 before reading this table.** The reference's retries are overwhelmingly `429
+RateLimitReached` on a shared serverless endpoint — wire contention on a neighbour's traffic, not
+output quality — and the challenger had a dedicated deployment to itself and could not be
+rate-limited by anyone. A retry count is a real signal at a 3x difference on comparable wires; this
+is not a comparable wire, and the row is here because deleting an inconvenient measurement is worse
+than printing one with its caveat attached.
+
+### 10.6 Cost, in the unit each model billed in
+
+These are **not the same number** and were never added, averaged or divided into each other.
+
+- **FLUX 2 Pro: 168 provider image units** over 56 generations, 3.00 per image, 42 derivatives free.
+- **Qwen-Image 2512: deployment hours.** **No per-image figure exists or was invented** — the
+  endpoint returned `background`, `quality` and `usage` all null, so there was no per-image signal
+  at all. That null is load-bearing: this deployment billed per hour of existence and inventing a
+  per-image figure would have been a lie with a decimal point on it.
+
+  The deployment record was deleted with the candidate tree, so what it measured is transcribed here
+  rather than left as a dangling path. One `GlobalManagedCompute` deployment at capacity 1, named
+  `qwen--qwen-image-2512`, served **all three asset repositories one after another**. Its hours are
+  therefore joint and cannot be attributed to this repository alone — by asset count, by wall clock,
+  by pixels? Each gives a different answer and none of them is a fact, so `compare.py` reported the
+  figure and refused to divide it by any set's generation count.
+
+  **Creation time: never observed, and deliberately never guessed.** The deployment existed before
+  the run began, and ARM exposes no creation timestamp for a project-scoped managed-compute
+  deployment, so its true billed lifetime is LONGER than any window below. Writing a plausible
+  timestamp would have turned an unknown into a figure somebody would later quote as measured.
+
+  | | literal-dialect run | positive-dialect pilot |
+  | --- | --- | --- |
+  | window, first to last generation | 07:43:31Z to 08:25:31Z | 10:57:49Z to 10:59:33Z |
+  | observed working hours | 0.7 | 0.03, and MARGINAL |
+  | generations in the window, all three repositories | 233 | 15 |
+  | this repository's share | 54 | 2 |
+  | mean seconds per generation | 10.8 | 6.8 |
+
+  All times 2026-08-03. The 0.7 hours **exclude provisioning and warming, which are billed**: the
+  endpoint showed Succeeded in the portal and then returned `500 Model service is unavailable` for
+  at least 17 minutes of continuous observed probing before it served anything — which is the §6
+  wall-clock estimate's central claim, confirmed. The pilot's 0.03 is marginal hours over a
+  deployment that was already running and already billing. That cuts both ways and must not be
+  quoted as "the experiment was free": it was free only because a deployment nobody could delete was
+  already burning.
+
+  **It was not torn down from here, and the record says so rather than showing a bill that looks
+  closed.** A `GlobalManagedCompute` deployment on an AIServices account is project-scoped and none
+  of three routes reached it: the ARM account-level deployments collection listed only
+  `claude-opus-5` at every api-version tried (2024-10-01, 2025-06-01, 2025-07-01-preview,
+  2025-09-01, 2025-10-01-preview); the project-scoped ARM path answered `500 InternalServerError` on
+  both GET and DELETE, which is an Azure-side fault; the data-plane path was 200 on GET and 404 on
+  DELETE, so it existed for reads only. Deleting it required a human in the Azure AI Foundry portal
+  under the `test01cloud01` resource, project `proj-default`. It was confirmed still present at
+  08:30:17Z, and that confirmation is the last thing this repository knows about it.
+
+**The operational finding is worth more than either number, and §6 predicted it.** The challenger
+ran on dedicated hardware at roughly 11 seconds an image and was idle for most of its billed life,
+because a candidate can only be generated once the reference set whose prompts it replays is
+complete. That is a fact about how the comparison had to be sequenced, not about the model — which
+is exactly why a per-hour provider must never be handed a per-image figure.
