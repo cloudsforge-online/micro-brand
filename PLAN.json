@@ -1,8 +1,8 @@
 {
   "$comment": "The generation plan: what the NEXT reference run would send, derived from plan.ts and prompts.ts and written before a single generation is paid for. It is NOT a record of what was sent — that is MANIFEST.json, per provider, and it is the manifests that verify.py compares for prompt parity. Do not edit by hand; it is regenerated, which is the point.",
-  "generatedAt": "2026-08-03T07:43:53.889Z",
+  "generatedAt": "2026-08-03T10:01:25.361Z",
   "referenceProvider": "flux-2-pro",
-  "total": 54,
+  "total": 56,
   "assets": [
     {
       "key": "site/mark@1024x1024",
@@ -15,6 +15,30 @@
       "accent": "#e8622c",
       "tier": 1,
       "prompt": "Brand mark for a software company, drawn as one member of an existing family of marks. Flat geometric vector: every shape constructed from circles, squares and 45-degree chamfers on a single grid, one uniform stroke weight throughout, sharp corners left sharp, generous negative space, optically centred. High contrast against a warm ash ground (#12100f) with exactly one accent colour — #e8622c — and no second hue anywhere. Flat fills only: no gradients, no photographic texture, no bevels, no drop shadows, no glow, no 3D, no photo-realism, no weathering, no illustration. Confident and minimal, and legible at 16 pixels. No stock-logo cliches, no swooshes.\n\nThe brand mark. One idea, executed cleanly, centred and symmetrical in a square field with even margins on all four sides.\n\nThe one idea this mark is built around: a low ash ridge — one flat baseline with a single shallow arc rising from it, like the face of an anvil seen from the front — and one solid ember flame rising above the centre of that arc. The ridge is the ground and the flame is the fire the whole thing is built around. Two elements only: the ridge and the flame.\n\nNo text, no lettering, no numerals, no currency symbols, no watermark.\n\nThe background is one flat, uniform, unbroken near-black warm ash field, hex #12100f, filling the entire frame from edge to edge — not grey, not taupe, not beige, and not lighter at the corners. The artwork is bright against a dark ground, never dark against a light one. Draw only the finished mark: no construction lines, no grid, no guides, no ruled margins, no border, no frame, no bounding box, no registration marks, no drop shadow.\n\nEvery drawn element is filled or stroked in #e8622c — that exact colour, at full strength. The only permitted exception is the ground line, which may instead be a muted bone #b7ae9b. Nothing is drawn in plain white, plain grey or the ground colour, and #e8622c is the dominant colour of the artwork rather than a small detail on it."
+    },
+    {
+      "key": "currency-ember/mark@1024x1024",
+      "surface": "currency-ember",
+      "surfaceName": "EMBER",
+      "kind": "mark",
+      "recordedKind": "mark",
+      "declaredSize": "1024x1024",
+      "requestedSize": "1024x1024",
+      "accent": "#e8622c",
+      "tier": 1,
+      "prompt": "Brand mark for a software company, drawn as one member of an existing family of marks. Flat geometric vector: every shape constructed from circles, squares and 45-degree chamfers on a single grid, one uniform stroke weight throughout, sharp corners left sharp, generous negative space, optically centred. High contrast against a warm ash ground (#12100f) with exactly one accent colour — #e8622c — and no second hue anywhere. Flat fills only: no gradients, no photographic texture, no bevels, no drop shadows, no glow, no 3D, no photo-realism, no weathering, no illustration. Confident and minimal, and legible at 16 pixels. No stock-logo cliches, no swooshes.\n\nThe brand mark. One idea, executed cleanly, centred and symmetrical in a square field with even margins on all four sides.\n\nThe one idea this mark is built around: a struck coin: one perfect circle drawn as a single uniform-weight outline, and held centred inside that circle one solid ember flame — a teardrop with its point at the top and its base flat. Nothing else sits inside the circle. Below the circle, clear of it and not touching it, the ash ridge is one short flat bar, so the coin reads as standing on ground rather than sitting in a frame. Three elements only: the circle, the flame within it, and the bar beneath it.\n\nNo text, no lettering, no numerals, no currency symbols, no watermark.\n\nThe background is one flat, uniform, unbroken near-black warm ash field, hex #12100f, filling the entire frame from edge to edge — not grey, not taupe, not beige, and not lighter at the corners. The artwork is bright against a dark ground, never dark against a light one. Draw only the finished mark: no construction lines, no grid, no guides, no ruled margins, no border, no frame, no bounding box, no registration marks, no drop shadow.\n\nEvery drawn element is filled or stroked in #e8622c — that exact colour, at full strength. The only permitted exception is the ground line, which may instead be a muted bone #b7ae9b. Nothing is drawn in plain white, plain grey or the ground colour, and #e8622c is the dominant colour of the artwork rather than a small detail on it."
+    },
+    {
+      "key": "currency-spark/mark@1024x1024",
+      "surface": "currency-spark",
+      "surfaceName": "Spark",
+      "kind": "mark",
+      "recordedKind": "mark",
+      "declaredSize": "1024x1024",
+      "requestedSize": "1024x1024",
+      "accent": "#e8622c",
+      "tier": 1,
+      "prompt": "Brand mark for a software company, drawn as one member of an existing family of marks. Flat geometric vector: every shape constructed from circles, squares and 45-degree chamfers on a single grid, one uniform stroke weight throughout, sharp corners left sharp, generous negative space, optically centred. High contrast against a warm ash ground (#12100f) with exactly one accent colour — #e8622c — and no second hue anywhere. Flat fills only: no gradients, no photographic texture, no bevels, no drop shadows, no glow, no 3D, no photo-realism, no weathering, no illustration. Confident and minimal, and legible at 16 pixels. No stock-logo cliches, no swooshes.\n\nThe brand mark. One idea, executed cleanly, centred and symmetrical in a square field with even margins on all four sides.\n\nThe one idea this mark is built around: one small solid ember flame — the same teardrop shape as the coin mark, point at the top, base flat — standing alone with no circle, no disc, no ring and no enclosure of any kind around it. Beneath it three short straight strokes rise from the ash ridge at slightly different heights, the outer two shorter than the middle one, like fire coming straight off the ground. The ash ridge is the flat baseline they stand on. Two elements only: the flame and the three rising strokes above the baseline. Not a burst, not a star, not a cross, no radiating rays.\n\nNo text, no lettering, no numerals, no currency symbols, no watermark.\n\nThe background is one flat, uniform, unbroken near-black warm ash field, hex #12100f, filling the entire frame from edge to edge — not grey, not taupe, not beige, and not lighter at the corners. The artwork is bright against a dark ground, never dark against a light one. Draw only the finished mark: no construction lines, no grid, no guides, no ruled margins, no border, no frame, no bounding box, no registration marks, no drop shadow.\n\nEvery drawn element is filled or stroked in #e8622c — that exact colour, at full strength. The only permitted exception is the ground line, which may instead be a muted bone #b7ae9b. Nothing is drawn in plain white, plain grey or the ground colour, and #e8622c is the dominant colour of the artwork rather than a small detail on it."
     },
     {
       "key": "site/favicon@512x512",

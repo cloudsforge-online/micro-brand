@@ -61,6 +61,11 @@ const TOOL: readonly PlannedKind[] = ['mark', 'favicon']
  */
 const PUBLIC_CHILD: readonly PlannedKind[] = ['favicon', 'og']
 
+/**
+ * Every entry here is a REGISTRY SURFACE, and `generate.ts`'s `assertPlanMatchesRegistry` walks
+ * exactly this list. Anything that is not a surface of the product — see `CURRENCY` below — must
+ * not be added here, because the guard would (correctly) refuse to run.
+ */
 export const PLAN: readonly PlannedSurface[] = [
   /* ---- tier 1: the company ------------------------------------------------------------- */
   {
@@ -246,6 +251,100 @@ export const PLAN: readonly PlannedSurface[] = [
   },
 ]
 
+/* ------------------------------------------------------------------ the currency */
+
+/**
+ * The currency marks: EMBER, and its display subunit Sparks.
+ *
+ * ## Why these are not in `PLAN`
+ *
+ * `generate.ts` refuses to run if any entry in `PLAN` is absent from the surface registry
+ * (`ui/packages/ui/src/surfaces.ts`). That guard is right and stays. A currency is **not a
+ * surface** — nobody navigates to it, it has no host, no favicon and no OG card — so it is not in
+ * the registry and must never be added to it just to get past a check. It is planned here instead,
+ * and `assertCurrencyIsNotASurface` in `generate.ts` asserts the inverse: that no key below is a
+ * registry surface, so this list cannot be used to smuggle a real surface past the registry.
+ *
+ * ## Why they live in micro-brand at all
+ *
+ * `docs/ecosystem/23-tessera.md:321` specifies `ember-coin` and `spark` as two of sixteen "status
+ * & economy icons" at 256x256, destined for a `micro-tessera-assets` repository that **does not
+ * exist yet**. The currency rename is happening now and needs its mark now. micro-brand is the
+ * estate's brand repository, already holds every other estate-level mark, and already has the
+ * generation, derivation, parity and verification machinery. When micro-tessera-assets is created
+ * these two can be copied into it; nothing here assumes they will not be.
+ *
+ * ## What was searched for first, and not found
+ *
+ * There is **no existing currency artwork anywhere in the estate's three asset repositories** to
+ * replace. `micro-brand` has zero occurrences of "shard" in any form; every one of its 94 prompts
+ * in fact carries the NEGATIVE constraint "no currency symbols", from `studio/src/prompt.ts`'s
+ * `NO_TEXT`, and that constraint is correct and kept — it is what stops a model drawing a dollar
+ * sign instead of this mark. `micro-aetherholm-assets` has zero occurrences too. The 137-asset
+ * Emberkin set's `ui/glyph-shard` IS a shard, but a shard of ROCK — `plan.ts:793` asks for "one
+ * floating four-sided shard of rock, tilted, ... with one straight facet line down its face" — and
+ * it is world-building, not money. `micro-emberkin/README.md:44` draws the distinction itself:
+ * "| The world's floating **shards** | The internal currency, **Shards** |". The left column stays.
+ * So this is net-new art, not a replacement, and nothing existing is re-prompted.
+ *
+ * ## One accent for both, deliberately
+ *
+ * Both marks take `#e8622c`, the CloudsForge ember from the registry's `site` and `hub`. A second
+ * hue would say these are two different assets, and that is precisely the error the migration
+ * warns against: `docs/ecosystem/23-tessera.md:716` — "**Sparks is a display denomination of
+ * EMBER. It is not a second `assetCode`, and it must never become one.**" So the denomination is
+ * carried by FORM, never by colour: EMBER is ENCLOSED in a struck disc and Spark is OPEN, with no
+ * enclosure at all. That difference survives greyscale, survives 16 pixels, and survives a reader
+ * who cannot tell two warm oranges apart — which is the bar `23-tessera.md:325` sets for this very
+ * icon set ("distinguishable at 16 px by someone who cannot tell the two accent colours apart").
+ *
+ * ## No ratio is drawn, and no numeral
+ *
+ * The subunit ratio is genuinely unsettled in the estate — `23-tessera.md:712` says a Spark is
+ * 10^-6 EMBER, `hearth/branding/brand.md:17` says 1e-8, and `hearth/docs/coinnomics.md:33` says
+ * the spark was retired — against the 10^3 the rename proposes. Art that depicted a ratio would
+ * bake one of four answers into a PNG and be wrong three ways. Neither prompt names a number, and
+ * `NO_TEXT` already forbids numerals outright, so settling the ratio later costs no regeneration.
+ */
+export const CURRENCY: readonly PlannedSurface[] = [
+  {
+    key: 'currency-ember',
+    name: 'EMBER',
+    accent: '#e8622c',
+    tier: 1,
+    kinds: ['mark'],
+    // ENCLOSED. A struck disc is what makes a mark read as a unit of money without a currency
+    // glyph in it, and the flame inside it is the site mark's flame, so the money is visibly the
+    // same family as the company rather than a coin borrowed from stock art.
+    idea:
+      'a struck coin: one perfect circle drawn as a single uniform-weight outline, and held ' +
+      'centred inside that circle one solid ember flame — a teardrop with its point at the top ' +
+      'and its base flat. Nothing else sits inside the circle. Below the circle, clear of it and ' +
+      'not touching it, the ash ridge is one short flat bar, so the coin reads as standing on ' +
+      'ground rather than sitting in a frame. Three elements only: the circle, the flame within ' +
+      'it, and the bar beneath it.',
+  },
+  {
+    key: 'currency-spark',
+    name: 'Spark',
+    accent: '#e8622c',
+    tier: 1,
+    kinds: ['mark'],
+    // OPEN. No circle anywhere, which is the whole distinction from EMBER above and the reason
+    // the two are told apart in greyscale at 16 pixels. Deliberately NOT a four-point burst:
+    // `create`'s mark is already a struck spark drawn as a crossed burst, and repeating it here
+    // would make the subunit read as Forge Create.
+    idea:
+      'one small solid ember flame — the same teardrop shape as the coin mark, point at the top, ' +
+      'base flat — standing alone with no circle, no disc, no ring and no enclosure of any kind ' +
+      'around it. Beneath it three short straight strokes rise from the ash ridge at slightly ' +
+      'different heights, the outer two shorter than the middle one, like fire coming straight ' +
+      'off the ground. The ash ridge is the flat baseline they stand on. Two elements only: the ' +
+      'flame and the three rising strokes above the baseline. Not a burst, not a star, not a ' +
+      'cross, no radiating rays.',
+  },
+]
+
 /**
  * Priority order across the whole run, as instructed: the company set first, then the product
  * marks, then the wordmarks, then OG and social.
@@ -267,9 +366,18 @@ export interface PlannedAsset {
   readonly kind: PlannedKind
 }
 
+/**
+ * Everything this repository generates: the registry surfaces, then the currency marks.
+ *
+ * `PLAN` alone is what the registry guard walks. This is what the RUN walks. Keeping them separate
+ * is the only reason a currency can be generated here without either weakening that guard or
+ * inventing a surface in `ui/packages/ui/src/surfaces.ts` that no browser ever opens.
+ */
+export const PLANNED_SURFACES: readonly PlannedSurface[] = [...PLAN, ...CURRENCY]
+
 export function plannedAssets(): PlannedAsset[] {
   const out: PlannedAsset[] = []
-  for (const surface of PLAN) {
+  for (const surface of PLANNED_SURFACES) {
     for (const kind of surface.kinds) out.push({ surface, kind })
   }
   return out.sort((a, b) => {
@@ -278,6 +386,8 @@ export function plannedAssets(): PlannedAsset[] {
     if (b.surface.tier === 1 && a.surface.tier !== 1) return 1
     const kind = KIND_PRIORITY[a.kind] - KIND_PRIORITY[b.kind]
     if (kind !== 0) return kind
-    return PLAN.indexOf(a.surface) - PLAN.indexOf(b.surface)
+    // PLANNED_SURFACES, not PLAN: a currency mark is absent from PLAN, so `indexOf` would return
+    // -1 for it and sort it ahead of `site` — the one asset the run is meant to start with.
+    return PLANNED_SURFACES.indexOf(a.surface) - PLANNED_SURFACES.indexOf(b.surface)
   })
 }

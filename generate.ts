@@ -75,7 +75,7 @@ import {
 } from './backends.ts'
 import { PROVIDERS, REFERENCE, providerById, assetsDirOf, manifestPathOf, type Provider } from './providers.ts'
 import { identityFor, manifestKey, promptFor, promptForProvider } from './prompts.ts'
-import { PLAN, plannedAssets, type PlannedKind, type PlannedSurface } from './plan.ts'
+import { PLAN, CURRENCY, plannedAssets, type PlannedKind, type PlannedSurface } from './plan.ts'
 import { SURFACES } from '../ui/packages/ui/src/surfaces.ts'
 
 const run = promisify(execFile)
@@ -138,6 +138,28 @@ function assertPlanMatchesRegistry(): void {
   }
   if (problems.length > 0) {
     throw new Error(`plan.ts has drifted from the surface registry:\n  ${problems.join('\n  ')}`)
+  }
+}
+
+/**
+ * The inverse guard: nothing in `CURRENCY` may be a registry surface.
+ *
+ * `CURRENCY` exists outside `PLAN` precisely so it escapes the check above, because a currency is
+ * not a surface and has no registry row to be checked against. That escape hatch is only safe if
+ * it cannot be widened. Without this, moving `hub` out of `PLAN` and into `CURRENCY` would silence
+ * a real accent-drift failure and generate a whole surface in a colour nobody chose — the exact
+ * defect design-system.md §7 item 1 describes. So: if a key here ever appears in the registry, it
+ * is a surface, it belongs in `PLAN`, and the run stops.
+ */
+function assertCurrencyIsNotASurface(): void {
+  const byKey = new Map(SURFACES.map((s) => [String(s.key), s]))
+  const smuggled = CURRENCY.filter((planned) => byKey.has(planned.key)).map((p) => p.key)
+  if (smuggled.length > 0) {
+    throw new Error(
+      `plan.ts CURRENCY holds registry surface(s): ${smuggled.join(', ')}. ` +
+        'A registry surface belongs in PLAN, where its accent and name are checked against ' +
+        'ui/packages/ui/src/surfaces.ts. CURRENCY is for identities that are not surfaces.',
+    )
   }
 }
 
@@ -466,6 +488,7 @@ async function main(): Promise<void> {
   const selection = parseArgs(process.argv.slice(2))
   const provider = selection.provider
   assertPlanMatchesRegistry()
+  assertCurrencyIsNotASurface()
 
   const plannedCount = await writePlanJson()
   process.stdout.write(`PLAN.json: ${plannedCount} asset(s) planned\n`)

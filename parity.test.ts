@@ -30,7 +30,10 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 
-import { plannedAssets } from './plan.ts'
+import { readFileSync } from 'node:fs'
+
+import { SURFACES } from '../ui/packages/ui/src/surfaces.ts'
+import { plannedAssets, CURRENCY } from './plan.ts'
 import {
   identityFor,
   promptFor,
@@ -498,4 +501,40 @@ test('every generated entry in the reference manifest is a key identityFor produ
   // site mark and is not in plan.ts. Anything else means the plan and the manifest disagree about
   // what this set contains, which would make a candidate run silently skip assets.
   assert.deepEqual(orphans, [], `manifest keys with no place in the plan: ${orphans.join(', ')}`)
+})
+
+/* ------------------------------------------------------------------ the currency seam */
+
+test('no currency identity is a registry surface', () => {
+  // The inverse of generate.ts's registry guard, and the reason CURRENCY is allowed to sit outside
+  // PLAN at all. PLAN is checked against ui/packages/ui/src/surfaces.ts so a hand-copied accent
+  // cannot drift; CURRENCY escapes that check because a currency has no registry row to be checked
+  // against. If a real surface were ever moved into CURRENCY it would escape the check too, and a
+  // whole surface could be generated in a colour nobody chose — design-system.md §7 item 1.
+  const registry = new Set(SURFACES.map((s) => String(s.key)))
+  const smuggled = CURRENCY.filter((planned) => registry.has(planned.key)).map((p) => p.key)
+  assert.deepEqual(smuggled, [], `registry surface(s) hiding in CURRENCY: ${smuggled.join(', ')}`)
+})
+
+test('EMBER and Sparks are one currency: same accent, told apart by form', () => {
+  // 23-tessera.md:716 — "Sparks is a display denomination of EMBER. It is not a second assetCode,
+  // and it must never become one." A second hue would say otherwise, and would also fail the bar
+  // 23-tessera.md:325 sets for this icon set: legible to someone who cannot tell two accents
+  // apart. So the denomination is carried by enclosure, and this asserts the colour never becomes
+  // the carrier.
+  const accents = new Set(CURRENCY.map((c) => c.accent.toLowerCase()))
+  assert.equal(accents.size, 1, `the currency marks must share one accent, got ${[...accents]}`)
+  assert.equal([...accents][0], '#e8622c')
+})
+
+test('derive.py ICON_SURFACES has not drifted from plan.ts CURRENCY', () => {
+  // derive.py cannot import plan.ts, so it hand-copies the currency keys — the same arrangement
+  // plan.ts itself has with the surface registry, and the same reason it needs asserting. If they
+  // drift, a currency mark is generated and then silently gets no 256 icon, or a surface that is
+  // not a currency gets one.
+  const source = readFileSync(new URL('./derive.py', import.meta.url), 'utf8')
+  const block = /ICON_SURFACES\s*=\s*\(([^)]*)\)/.exec(source)
+  assert.ok(block, 'ICON_SURFACES not found in derive.py')
+  const copied = [...block[1]!.matchAll(/"([^"]+)"/g)].map((m) => m[1]!)
+  assert.deepEqual(copied.sort(), CURRENCY.map((c) => c.key).sort())
 })

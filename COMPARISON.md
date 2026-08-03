@@ -241,3 +241,31 @@ lifetime is.
    stated 3D and animation gap FLUX cannot fill (`docs/ecosystem/19-new-products.md:97`). The
    registry is the list; a withdrawn provider keeps its entry because the wire facts in it were
    measured, and measured facts are cheaper to re-read than to re-establish.
+
+## 8. The currency marks: the one asset generated after the verdict
+
+`currency-ember/mark` and `currency-spark/mark` were generated for the EMBER/Sparks rename, after
+the comparison had already concluded FLUX decisively. They are worth recording because they are the
+cleanest single reproduction of the two defects sections 1 and 4 describe, on a prompt neither model
+had seen.
+
+Both models replayed the identical recorded prompt — `verify.py --parity` reports 0 disagreements —
+and that prompt says, verbatim: "no gradients, no photographic texture, no bevels, no drop shadows,
+no glow, no 3D, no photo-realism", and "no construction lines, no grid, no guides, no ruled margins,
+no border, no frame, no bounding box".
+
+* **FLUX** returned both marks flat, on the ash ground, in one accent, with the enclosure difference
+  the brief asked for intact — `currency-ember` a circle outline holding a solid flame, and
+  `currency-spark` an open flame over three rising strokes with no enclosure at all. Both pass
+  `verify.py`'s brand conformance with zero deviations.
+
+* **Qwen** returned, for `currency-ember`, a bevelled three-dimensional ring with a specular
+  highlight and a cast shadow, standing on a chamfered stone plinth — a rendered object, not a mark.
+  For `currency-spark` it **drew the construction grid**: a ruled square lattice with circle guides
+  across the whole frame, inside a drawn bounding box, around a campfire of kindling sticks with
+  smoke. That is the failure the `GROUND_CLAUSE` was written to prevent, reproduced in full against
+  the clause that names it.
+
+This is the section-1 finding at its sharpest: the challenger reads a flat brief photographically,
+and the prohibition list does not move it. Nothing here changes the verdict; it extends it to a kind
+of asset — a currency glyph — that the original 94 did not contain.
