@@ -8,6 +8,8 @@ prompt, the checksum, the delivered size and the number of times it had to be re
 **All of this artwork is AI-generated.** That is stated here, on every manifest entry, and in the
 licence string carried by each asset. The estate already discloses it and must continue to.
 
+Design authority: [`ecosystem/24-asset-model-comparison.md`](https://github.com/cloudsforge-online/micro-docs/blob/main/ecosystem/24-asset-model-comparison.md)
+
 ---
 
 ## 1. What is here
@@ -319,3 +321,13 @@ absent one, and a frontend for any of it to appear on.
 nobody has chosen, to an art direction nobody has written, would produce files that cannot be
 wired, cannot be verified against a registry and would be regenerated the day the real surface
 lands.
+
+---
+
+## Provenance
+
+The code in this repository was written by **Claude Opus 5** and **Claude Fable 5**, under
+human direction and review.
+
+The shipped art was generated with **FLUX 2 Pro** (`flux-2-pro`). Comparison sets generated
+with **Qwen-Image 2512** (`qwen-image-2512`) live under `candidates/` and are never shipped.
