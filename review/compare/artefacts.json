@@ -1,5 +1,5 @@
 {
-  "$scope": "Scored row by row off review/compare/compare-mark.png and compare-wordmark.png. The first six rows are counts out of the 12 `mark` assets; the lettering row is out of the 9 `wordmark` assets, which are the only kind on this sheet carrying a name. Marks and wordmarks only \u2014 not the whole 54.",
+  "$scope": "Scored row by row off review/compare/compare-mark.png and compare-wordmark.png. The first six rows are counts out of the 12 `mark` assets; the lettering row is out of the 9 `wordmark` assets, which are the only kind on this sheet carrying a name. Marks and wordmarks only — not the whole 54.",
   "flux-2-pro": {
     "construction guides drawn": 0,
     "frame / border / bounding box": 0,
@@ -21,7 +21,8 @@
     "lettering: name misspelt or invented": 0
   },
   "$notes": {
-    "flux-2-pro lettering": "hub/wordmark reads 'Home on the Ridge' \u2014 a phrase lifted from its own idea text in plan.ts rather than the registry name 'Forge Hub'. This is the documented FLUX failure mode (cf. 'Sftware Company', 'Cartre Pere') and it is the one criterion where the challenger is cleanly better: Qwen spelled all nine names correctly and set them more confidently.",
-    "qwen-image-2512 accent": "On the wordmarks the accent is absent on create, developers, foresight, market, site, trade and worlds \u2014 7 of 9 drawn in white, grey or bone despite the accent clause naming the exact hex and forbidding plain white and plain grey."
+    "flux-2-pro lettering": "hub/wordmark reads 'Home on the Ridge' — a phrase lifted from its own idea text in plan.ts rather than the registry name 'Forge Hub'. This is the documented FLUX failure mode (cf. 'Sftware Company', 'Cartre Pere') and it is the one criterion where the challenger is cleanly better: Qwen spelled all nine names correctly and set them more confidently.",
+    "qwen-image-2512 accent": "On the wordmarks the accent is absent on create, developers, foresight, market, site, trade and worlds — 7 of 9 drawn in white, grey or bone despite the accent clause naming the exact hex and forbidding plain white and plain grey.",
+    "qwen-image-2512-positive has no column here, deliberately": "That set holds two assets — currency-ember/mark and currency-spark/mark — and every column above is counted out of 12 marks and 9 wordmarks. Putting a 2-asset count in the same row as a 12-asset count would be the most misleading thing available, and compare.py prints these side by side with no denominator. The pilot tally is in COMPARISON.md section 9, with its own denominator stated on every figure."
   }
 }

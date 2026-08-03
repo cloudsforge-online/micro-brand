@@ -234,9 +234,18 @@ def read_accent(image: Image.Image, accent: str) -> AccentReading:
 def check_parity(documents: dict[str, dict]) -> list[str]:
     """The cross-set prompt check, in two halves — within a dialect, and across dialects.
 
-    Keyed on surface/kind@size — the manifest key — rather than on the file path, so that a
-    provider whose delivered dimensions differ from FLUX's is still lined up with the right
-    reference asset.
+    THE CHECK THE WHOLE COMPARISON RESTS ON. Two models asked different questions produce an
+    incomparable answer, and the failure is invisible in the images — it looks like one model being
+    worse at prompt adherence, which is exactly the conclusion this exercise is supposed to reach
+    honestly or not at all.
+
+    It compares the MANIFESTS, not PLAN.json and not the prompt-building code, because the manifest
+    is the only artefact that records what was actually SENT. PLAN.json is regenerated from the
+    current clauses on every run and drifts away from the run it describes the moment a clause is
+    edited. Checking against the code would be checking against a thing that has already moved.
+
+    Keyed on the manifest key rather than on the file path, so that a provider whose delivered
+    dimensions differ from FLUX's is still lined up with the right reference asset.
 
     WITHIN A DIALECT: unchanged, and this is the property the controlled comparison rests on. Every
     asset present in two or more sets of the same dialect must carry the byte-identical prompt in

@@ -269,3 +269,169 @@ no border, no frame, no bounding box".
 This is the section-1 finding at its sharpest: the challenger reads a flat brief photographically,
 and the prohibition list does not move it. Nothing here changes the verdict; it extends it to a kind
 of asset — a currency glyph — that the original 94 did not contain.
+
+## 9. The second question: is the verdict partly an artefact of our prompt style?
+
+Everything above is one controlled experiment — every model replays the recorded prompt byte for
+byte — and it answers **"which model is better on identical input"**. It cannot answer a second
+question, and the truncation probe is what made that second question worth asking.
+
+**Qwen does not truncate.** A 2,238-character prompt with the ground clause deliberately last was
+obeyed. So the prohibitions are received in full and disregarded, while the positives are honoured.
+The prohibition-last technique this estate built against FLUX therefore does not transfer, and these
+briefs are heavy with prohibitions — "no gradients, no photographic texture, no bevels, no drop
+shadows, no glow, no 3D", "no construction lines, no grid, no guides, no ruled margins, no border,
+no frame, no bounding box". If a model honours positives and disregards negatives, that is close to
+the worst possible shape of brief for it, and §8's currency marks would then be partly OUR failure
+rather than the model's.
+
+**The hypothesis: restating the prohibitions as positive assertions fixes Qwen's defects.**
+
+### 9.1 How a second prompt style exists without weakening §7's parity
+
+Prompt parity is what makes everything above mean anything, and it may not be softened to make room
+for this. A **dialect** is the mechanism: a named, deterministic, total function from the prompt on
+record for an asset to the prompt a set is actually sent. `literal` is the identity transform, has
+zero rules, and is what every set in this document was generated in. `positive` is one ordered rule
+list in `dialects.json`, read by both `dialects.ts` and `dialects.py` — the same one-file-two-loaders
+arrangement `providers.json` already uses, so the halves cannot drift.
+
+Parity is now enforced **within** a dialect and **across** dialects, and the second is *stronger*
+than the equality it replaces rather than weaker:
+
+| | before | now |
+| --- | --- | --- |
+| two sets, same dialect | byte-identical prompts | **unchanged** — byte-identical prompts |
+| two sets, different dialects | could not happen | the candidate's recorded prompt must be **exactly what its dialect's rules produce from the reference's record** |
+
+Equality could only ever say *"these two strings differ"*. Re-derivation says *"this string is not
+what this dialect produces from the record"* — which catches a hand-edited prompt, a rule added
+after a run, and a set whose declared dialect is not the one it was generated in. None of those look
+like disagreement, so none of them was catchable before. It was tested by hand: editing four words
+of one recorded prompt in the positive manifest turned `verify.py --parity` red with the asset named
+and both digests printed.
+
+Four further properties hold, and they are asserted rather than described:
+
+* **A candidate still cannot invent an asset.** The transform's input is the reference record, so a
+  positive-dialect set with no reference record has nothing to transform and
+  `MissingReferencePromptError` fires exactly as before.
+* **`promptFor` still takes no provider argument.** A dialect is per-SET and declared in a registry;
+  it is not a per-model tweak hidden in a builder.
+* **`--reprompt` is refused outside the literal dialect**, because that dialect holds the record
+  every other one derives from.
+* **"Positive" is measured, not claimed.** The dialect declares the vocabulary it forbids itself —
+  *no, not, never, nothing, neither, nor, without, cannot, avoid, omit, exclude* — the transformed
+  prompt is scanned for it on word boundaries, and a prompt that still carries any of it **cannot be
+  sent**: `promptForProvider` throws before a socket is opened. Every prompt in the pilot passed at
+  zero residuals. `python3 dialects.py --residuals` reports the state of the whole corpus.
+
+And nothing lets the two be confused on the page: the dialect is on the provider entry, printed as a
+row in `compare.py`'s header, and a cross-dialect selection prints a refusal saying in full that
+those columns were not asked the same question.
+
+**Nothing above §9 changed.** The FLUX sets are byte-identical, the existing Qwen candidate set is
+byte-identical, and `qwen-image-2512-positive` differs from `qwen-image-2512` in one field: the
+dialect. Same model, same deployment, same route, same key, same concurrency — asserted by test, so
+a difference in output has exactly one available explanation.
+
+### 9.2 The restatement
+
+The method, in four moves. A forbidden **rendering** becomes a described one; a forbidden **object**
+becomes a statement of what occupies that space instead; a forbidden **ground** becomes a
+measurement; a forbidden **hue** becomes a coordinate computed from the accent hex itself.
+
+| the estate's clause | the positive restatement |
+| --- | --- |
+| *Flat fills only: no gradients, no photographic texture, no bevels, no drop shadows, no glow, no 3D, no photo-realism, no weathering.* | *Flat fills only: this is a vector graphic of the kind an SVG file holds. Every shape is one single solid block of colour, exactly the same value at its centre as at its rim, and every edge is a hard boundary where one flat colour stops and the next flat colour begins. The whole image lies on one plane and is built from pure areas of colour, in the register of a printed pictogram on a road sign.* |
+| *Draw only the subject itself: no construction lines, no grid, no guides, no ruled margins, no border, no frame, no bounding box, no registration marks, no colour swatches and no drop shadow.* | *Draw only the finished subject: the subject and the flat field are the whole of the image, and the subject's own outline is the only edge anywhere in the frame.* |
+| *It is not standing on anything: no floor, no ground plane, no platform, no pedestal, no podium, no horizon line, no cast shadow and no contact shadow.* | *The subject floats free: the #12100f field continues unbroken beneath it and on all four sides of it, right up to its outline, so the last pixel outside its edge is #12100f and the first pixel inside it is the accent.* |
+| *— not grey, not taupe, not beige, not cream, not ivory, not off-white, not paper, not parchment, not a gradient, not a vignette, not a radial glow, not a spotlight, not a studio backdrop, and not lighter at the corners or behind the subject.* | *Sample that field at any point — a corner, an edge, the centre, the area directly behind the subject — and it reads exactly #12100f every time: one constant value across the entire field, as though the finished subject had been pasted onto a solid #12100f rectangle.* |
+| *Do not repeat it, do not inset a second smaller copy, do not add a thumbnail, a preview box, a framed panel, a tile, a mirror, a variant or a sheet of alternates.* | *The frame holds one instance of one subject at one size, and every pixel outside that one subject is bare background.* |
+| *Nothing is written anywhere in this image: no text, no lettering, no numerals, no caption…* | *This image is wordless and consists purely of shape. Every region of the frame is either part of the drawn subject or bare background, and wherever a caption, a label or a signature would sit there is bare background instead.* |
+| *…never olive, never teal.* (per accent) | *…sitting at 86 degrees on the hue wheel at 47 percent saturation and 53 percent lightness.* (computed from `#8fbf4f`) |
+
+The **subject sentence is carried through untouched** wherever it holds no prohibition, which is what
+keeps the two dialects two phrasings of one brief rather than two briefs. 32 rules, applied in order.
+
+### 9.3 The pilot: 15 assets, the worst-documented failures, Qwen only
+
+Every one measured on the criteria §§1–6 fix, so it is comparable with the run it is testing.
+`--common` restricts every set to the assets all three hold, because a spread computed over 15 icons
+is not the same measurement as one computed over a brand system.
+
+**Criterion 4, the artefact taxonomy, scored row by row off the side-by-side sheets.**
+
+| | FLUX (literal) | Qwen (literal) | **Qwen (positive)** |
+| --- | --- | --- | --- |
+| framed / bordered / boxed | 0 / 15 | 14 / 15 | **15 / 15** |
+| non-flat (3D, bevel, gradient, glow) | 0 / 15 | 15 / 15 | **15 / 15** |
+| construction guides drawn | 0 / 15 | 1 / 15 | **0 / 15** |
+| ground not the flat ash field | 0 / 15 | 8 / 15 | **9 / 15** |
+| idea not recognisable from the plan | 0 / 15 | 2 / 15 | **8 / 15** |
+| recognisable pastiche of an existing artwork | 0 / 15 | 1 / 15 | **0 / 15** |
+
+The one cell where the literal column is not already at 15 is `currency-ember`, which Qwen returned
+as a plinth-mounted 3D ring with no frame around it. The positive dialect added the frame.
+
+**Criteria 1–3 and 6, arithmetic** (emberkin's 9 type icons; the other two sets agree in direction):
+
+| | FLUX | Qwen literal | Qwen positive |
+| --- | --- | --- | --- |
+| ground off-target (>0.12 luma) | 0 | 0 | 0 |
+| below accent floor | 0 | 1 | 1 |
+| delivered ≠ declared | 0 | 0 | 0 |
+| accent lightness SPREAD | 0.112 | 0.133 | **0.197** |
+| accent hue error SPREAD (deg) | 4.6 | 8.5 | 7.4 |
+| ink coverage spread (in-kind) | 0.0652 | 0.1092 | **0.1946** |
+| KB per megapixel (median) | 292 | 958 | **851** |
+| median retention at 16px | — | — | 77% (brand marks; FLUX 73%) |
+| cost | per image | shared deployment hours | **zero marginal hours** — the deployment was already running and, per its own `DEPLOYMENT.json`, could not be torn down |
+
+**The one number that is not a defeat.** KB/megapixel — the flat-versus-photographic proxy — fell
+from 958 to 851. That is the register moving in the right direction by about 11%, against a FLUX
+baseline of 292. It moved; it did not arrive.
+
+**Per asset, the two that matter most.** `currency-ember`: the literal set returned a bevelled 3D
+ring on a stone plinth. The positive set returned **the same bevelled 3D disc, with a cast shadow
+and a grey plinth bar, now additionally inside a drawn orange rounded-square frame** — the framing
+is new, against the clause that replaced "no border, no frame, no bounding box".
+`currency-spark`: the literal set drew the construction grid. The positive set **did not draw the
+grid** — the one clean win — but returned the flame inside a bevelled ring *and* a cream parchment
+panel *and* a teal third hue, against a brief whose subject sentence now reads *"standing alone in
+open ground, with bare ash field on every side of it out to the frame edge."*
+
+**Where positive phrasing genuinely helped.** Both assets §8 flagged as a different class of failure
+moved: `types/gale` stopped being a recursive grid of framed picture-boxes, and `types/tide` stopped
+being a Hokusai pastiche and came back as a plain wave curl. Construction guides went to zero across
+all 15. So the dialect *does* pull the model back onto the subject when it has wandered off it.
+
+**Where it made things worse.** Idea drift went from 1 of 15 to 8 of 15. Restating a shape
+prohibition as a positive description hands the model more shape vocabulary, and it elaborates on
+it: `types/lumen` grew three bevelled spheres, `types/umbra` became a segmented ring rather than a
+disc with a crescent bitten out, `icons/resource-skysteel` became a plain cube rather than a notched
+ingot. Accent-lightness spread and ink spread both got worse.
+
+### 9.4 Verdict, and why phase 2 was not run
+
+**The hypothesis is rejected.** Framing and bevelling survived a brief containing *not one
+prohibition word* — verified, not assumed: the residual gate refuses to send a prompt that still
+carries any. 15 of 15 framed and 15 of 15 non-flat, against the literal dialect's 14 and 15. The
+positive dialect is the only one of the two that framed *everything*.
+
+That is the model's register. It is not a misread brief, it is not truncation, and no phrasing of
+ours moves it: we asked in the negative and it framed everything; we asked in the positive and it
+framed everything. **The §8 finding stands and is strengthened** — what looked like it might be our
+prompt style was the model.
+
+So phase 2 was **not** run. Regenerating all 233 in this dialect would spend a deployment lifetime
+to confirm a negative already established at 15 of 15 with zero variance, and it would also require
+writing rules for the 195 recorded prompts the transform does not yet clear (`dialects.py
+--residuals`: 38 of 233 clean today). Stopping is the finding.
+
+**What is kept.** The dialect mechanism, because it is the honest way to ask this class of question
+and the next model will raise it again; the 15 assets, because they are the evidence; and the
+measurement, because "the register did not move under a positively-phrased brief" is a stronger
+statement about Qwen than anything in §§1–8, and it could only be made by running it.
+
+**The verdict of §§1–8 is unchanged: FLUX, decisively.**
