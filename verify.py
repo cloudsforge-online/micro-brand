@@ -247,8 +247,9 @@ def check_parity(documents: dict[str, dict]) -> list[str]:
     by_key: dict[str, dict[str, str]] = {}
     for provider_id, document in documents.items():
         for asset in document["assets"]:
-            key = f'{asset["surface"]}/{asset["kind"]}@{asset["declaredSize"]}'
-            by_key.setdefault(key, {})[provider_id] = asset["prompt"]
+            # providers.key_of, not a hand-built string: the three asset repositories identify an
+            # asset differently and this function is the only place that difference lives.
+            by_key.setdefault(providers.key_of(asset), {})[provider_id] = asset["prompt"]
 
     reference_id = providers.reference().id
     problems: list[str] = []

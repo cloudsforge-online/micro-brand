@@ -59,6 +59,23 @@ def _document() -> dict:
     return json.loads(REGISTRY.read_text())
 
 
+def key_of(entry: dict) -> str:
+    """The identity of one asset, spelled the way THIS repository spells it.
+
+    Driven by providers.json's `identity` block rather than hardcoded, because it is the one thing
+    that really differs between the estate's three asset repositories — micro-brand keys on
+    surface + kind, the two game sets key on a single dotted `asset` path. Everything else in this
+    file is identical across all three, and stays that way because of this function.
+    """
+    fields = _document()["identity"]["key"]
+    return "/".join(str(entry[f]) for f in fields[:-1]) + "@" + str(entry[fields[-1]])
+
+
+def label_of(entry: dict) -> str:
+    """The short human name for one asset, for a report line or a sheet caption."""
+    return "/".join(str(entry[f]) for f in _document()["identity"]["label"])
+
+
 def load() -> list[Provider]:
     document = _document()
     out = []

@@ -560,9 +560,18 @@ async function main(): Promise<void> {
   }
 }
 
+/**
+ * Only when this file is the program, never on import.
+ *
+ * A bare `await main()` at module scope means importing this module starts a real generation run,
+ * against a live and billed endpoint. `prompts.ts` exists partly so the test suite never has to
+ * import this file, but the guard is the thing that makes that safe rather than conventional.
+ */
+const invokedDirectly = process.argv[1] !== undefined && process.argv[1].endsWith('generate.ts')
+
 // Surfacing the checklist is the entire value of an unimplemented backend, so it is printed in
 // full rather than being flattened into a one-line stack trace.
-await main().catch((err: unknown) => {
+if (invokedDirectly) await main().catch((err: unknown) => {
   if (err instanceof UnimplementedBackendError) {
     process.stderr.write(`\n${err.message}\n`)
     process.exitCode = 2

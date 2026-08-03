@@ -160,7 +160,7 @@ class SetReading:
             path = self.provider.root / asset["path"]
             if not path.exists():
                 continue
-            name = f'{asset["surface"]}/{asset["kind"]}'
+            name = providers.label_of(asset)
 
             if asset["deliveredSize"] != asset["declaredSize"] and not asset.get("derivedFrom"):
                 self.wrong_size.append(name)
@@ -284,9 +284,7 @@ def build_sheet(kind: str, readings: list[SetReading], tile_width: int = 420) ->
     nobody can hold in their head.
     """
     rows: list[tuple[str, list[dict | None]]] = []
-    indexed = [
-        {f'{a["surface"]}/{a["kind"]}@{a["declaredSize"]}': a for a in r.assets} for r in readings
-    ]
+    indexed = [{providers.key_of(a): a for a in r.assets} for r in readings]
     keys = sorted(
         {
             key

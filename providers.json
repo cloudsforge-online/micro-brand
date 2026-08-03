@@ -30,6 +30,18 @@
 
   "reference": "flux-2-pro",
 
+  "$identity": [
+    "How an asset is identified in THIS repository's manifests. The one thing that genuinely",
+    "differs between the estate's three asset repositories: micro-brand keys on surface + kind,",
+    "and the two game sets key on a single dotted `asset` path. Naming it here rather than in code",
+    "is what lets providers.py, compare.py and verify.py's parity check be byte-identical copies",
+    "across all three repositories instead of three subtly different forks."
+  ],
+  "identity": {
+    "key": ["surface", "kind", "declaredSize"],
+    "label": ["surface", "kind"]
+  },
+
   "providers": [
     {
       "id": "flux-2-pro",
