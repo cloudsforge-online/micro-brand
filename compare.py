@@ -356,12 +356,13 @@ def build_sheet(kind: str, readings: list[SetReading], tile_width: int = 420) ->
                 sheet.paste(
                     image.convert("RGB").resize((tile_width, tile_height), Image.LANCZOS), (x, y)
                 )
-            draw.text(
-                (x, y + tile_height + 4),
-                f'{key}  {asset["deliveredSize"]}  c2pa={asset["c2pa"]}  retries={asset["retries"]}',
-                fill=(190, 185, 175),
-                font=typeface,
-            )
+            # Truncated to the tile. A caption that overruns its column collides with the next
+            # one and the sheet becomes unreadable exactly where it is supposed to be doing its
+            # job — this is the artefact a person judges the comparison from.
+            caption = f'{key}  r{asset["retries"]}'
+            while typeface.getlength(caption) > tile_width - 6 and len(caption) > 8:
+                caption = caption[:-1]
+            draw.text((x, y + tile_height + 4), caption, fill=(190, 185, 175), font=typeface)
 
     REVIEW.mkdir(parents=True, exist_ok=True)
     out = REVIEW / f"compare-{kind}.png"

@@ -1,5 +1,5 @@
 {
-  "$scope": "the 12 `mark` assets of each set, scored row by row off review/*/sheet-mark.png, plus trade/wordmark for the lettering row. Marks only, so these are counts out of 12 and not out of the whole set.",
+  "$scope": "Scored row by row off review/compare/compare-mark.png and compare-wordmark.png. The first six rows are counts out of the 12 `mark` assets; the lettering row is out of the 9 `wordmark` assets, which are the only kind on this sheet carrying a name. Marks and wordmarks only \u2014 not the whole 54.",
   "flux-2-pro": {
     "construction guides drawn": 0,
     "frame / border / bounding box": 0,
@@ -8,7 +8,7 @@
     "ground not the brand near-black": 0,
     "accent absent or wrong hue": 0,
     "idea not recognisable from plan.ts": 0,
-    "lettering: name misspelt or invented": 0
+    "lettering: name misspelt or invented": 1
   },
   "qwen-image-2512": {
     "construction guides drawn": 6,
@@ -19,5 +19,9 @@
     "accent absent or wrong hue": 5,
     "idea not recognisable from plan.ts": 3,
     "lettering: name misspelt or invented": 0
+  },
+  "$notes": {
+    "flux-2-pro lettering": "hub/wordmark reads 'Home on the Ridge' \u2014 a phrase lifted from its own idea text in plan.ts rather than the registry name 'Forge Hub'. This is the documented FLUX failure mode (cf. 'Sftware Company', 'Cartre Pere') and it is the one criterion where the challenger is cleanly better: Qwen spelled all nine names correctly and set them more confidently.",
+    "qwen-image-2512 accent": "On the wordmarks the accent is absent on create, developers, foresight, market, site, trade and worlds \u2014 7 of 9 drawn in white, grey or bone despite the accent clause naming the exact hex and forbidding plain white and plain grey."
   }
 }
