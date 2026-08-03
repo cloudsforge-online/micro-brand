@@ -154,6 +154,8 @@ class SetReading:
         self.illegible: list[str] = []
         # criterion 5
         self.c2pa = sum(1 for a in self.assets if a["c2pa"])
+        # A cheap, objective proxy for "flat vector or photograph".
+        self.bytes_per_mp: list[float] = []
 
     def measure(self) -> None:
         for asset in self.assets:
@@ -167,6 +169,16 @@ class SetReading:
 
             with Image.open(path) as raw:
                 image = raw.convert("RGB")
+                # PNG bytes per megapixel. Flat geometric art is large areas of identical colour
+                # and compresses enormously; photographic texture — paper grain, fibre, soft
+                # shadow — does not. It is a blunt instrument and it is not a quality judgement,
+                # but it separates "drew a flat mark" from "photographed an object" without an eye,
+                # across a whole set, for free. Reported under criterion 2, because a model that
+                # answers a flat-graphic brief photographically has a house style problem rather
+                # than a per-image one.
+                megapixels = (image.size[0] * image.size[1]) / 1_000_000
+                if megapixels > 0 and not asset.get("derivedFrom"):
+                    self.bytes_per_mp.append(asset["byteSize"] / megapixels / 1024)
                 ground = sample_ground(image)
                 ground_l = luma(ground)
                 self.ground_luma.append(ground_l)
@@ -394,6 +406,10 @@ def report(readings: list[SetReading]) -> None:
     row("accent hue error: SPREAD", [f"{spread(r.hue_error):.1f}" for r in readings])
     row("ink coverage spread (in-kind)", [f"{r.ink_spread:.4f}" for r in readings])
     row("ground luma spread", [f"{spread(r.ground_luma):.4f}" for r in readings])
+    row("KB per megapixel (median)", [f"{median(r.bytes_per_mp):.0f}" for r in readings])
+    print("   KB/MP is a proxy, not a verdict: flat geometric art is large areas of one colour and")
+    print("   compresses hard; photographic texture does not. A large gap here means the two models")
+    print("   answered the same brief in different REGISTERS, which criterion 2 cares about most.")
 
     print("\n3. LEGIBILITY AT THE SIZE IT IS USED  (contrast kept under Lanczos downscale)")
     for size in LEGIBILITY_SIZES:
