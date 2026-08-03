@@ -10,12 +10,12 @@
     "",
     "LAYOUT. The reference provider's root is the repository itself: its assets are at assets/ and",
     "its provenance is MANIFEST.json, exactly where they have always been. That is not symmetry for",
-    "its own sake being sacrificed — it is a requirement. Around twenty sibling repositories point at",
+    "its own sake being sacrificed \u2014 it is a requirement. Around twenty sibling repositories point at",
     "assets/<surface>/favicon-32x32.png and friends (every web app's test/brand-chrome.test.ts,",
     "network-site/src/components/shell.tsx, deploy/compose/docker-compose.estate.yml), and this",
     "repository's own CI globs assets/**/*.png. Moving the reference set to sets/flux/ to make the",
     "three roots look alike would break those consumers and rewrite the `path` of every entry in",
-    "MANIFEST.json — the opposite of leaving the reference byte-identical.",
+    "MANIFEST.json \u2014 the opposite of leaving the reference byte-identical.",
     "",
     "So the challengers go under candidates/<id>/, which also states the truth: the reference set is",
     "SHIPPED and the other two are on trial. If a challenger wins it is promoted by moving its tree",
@@ -27,9 +27,7 @@
     "most of this exercise while the reference stays green. verify.py takes --provider and reads",
     "exactly one manifest, so those two states do not collide."
   ],
-
   "reference": "flux-2-pro",
-
   "$identity": [
     "How an asset is identified in THIS repository's manifests. The one thing that genuinely",
     "differs between the estate's three asset repositories: micro-brand keys on surface + kind,",
@@ -38,10 +36,16 @@
     "across all three repositories instead of three subtly different forks."
   ],
   "identity": {
-    "key": ["surface", "kind", "declaredSize"],
-    "label": ["surface", "kind"]
+    "key": [
+      "surface",
+      "kind",
+      "declaredSize"
+    ],
+    "label": [
+      "surface",
+      "kind"
+    ]
   },
-
   "providers": [
     {
       "id": "flux-2-pro",
@@ -72,23 +76,22 @@
         "Accepts no seed parameter, so `seed` is null on every entry rather than invented."
       ]
     },
-
     {
       "id": "qwen-image-2512",
       "label": "Qwen-Image 2512",
       "vendor": "Alibaba Qwen, Azure AI Foundry Global Managed Compute on A100_80GB",
-      "adapter": "foundry-managed-compute",
+      "adapter": "foundry-openai-images",
       "root": "candidates/qwen-image-2512",
       "status": "live",
       "shipped": false,
-      "implemented": false,
+      "implemented": true,
       "concurrency": 2,
       "deployment": "qwen--qwen-image-2512",
       "deploymentVerified": true,
-      "route": "/managed-deployments/{deployment}/v1/chat/completions",
+      "route": "/openai/v1/images/generations",
       "env": {
-        "endpoint": "FOUNDRY2_BASE_URL",
-        "apiKey": "FOUNDRY2_API_KEY"
+        "endpoint": "FOUNDRY3_BASE_URL",
+        "apiKey": "FOUNDRY3_API_KEY"
       },
       "billing": {
         "unit": "deployment hour",
@@ -98,14 +101,35 @@
         "hourlyRate": null
       },
       "notes": [
-        "Route and auth are MEASURED against the live deployment, not read off a model card:",
-        "`api-key: <key>` is correct and `Authorization: Bearer` is explicitly 401. There is no",
-        "swagger.json — /managed-deployments/<name>/swagger.json is 404 even with a valid key — so",
-        "the request body's field names are still the one open unknown. See backends.ts.",
-        "Cost may not be added to or divided against the reference provider's: COMPARISON.md §6."
+        "THE MEASURED CONTRACT. Every line re-verified against the live endpoint rather than",
+        "taken on trust, and the last one was found by doing so.",
+        "",
+        "  POST {FOUNDRY3_BASE_URL}/openai/v1/images/generations",
+        "  api-key: <FOUNDRY3_API_KEY>            (Bearer is 401)",
+        "  {\"model\":\"qwen--qwen-image-2512\",\"prompt\":...,\"response_format\":\"b64_json\",\"n\":1,\"size\":...}",
+        "",
+        "1. It is NOT under /managed-deployments/. That route exists on a different host and is",
+        "   what the earlier stub was written against; this is an OpenAI-shaped images route.",
+        "2. `response_format` is REQUIRED and must be b64_json. The default, url, is a 400 \u2014",
+        "   and that error is emitted by the model itself, which is how the route was found.",
+        "3. `width`/`height` are rejected outright: unrecognized_request_argument.",
+        "4. **`size` IS TRANSPOSED.** Asking for 1024x384 delivers a 384x1024 image while the",
+        "   response still reports size 1024x384. Verified across four aspect ratios in both",
+        "   directions: 384x1024->1024x384, 1280x640->640x1280, 640x1280->1280x640,",
+        "   1200x640->640x1200. Square sizes hide it completely, which is why a 1024x1024 probe",
+        "   looks correct. backends.ts compensates by sending height x width; that is an",
+        "   envelope fix and touches nothing about the prompt.",
+        "5. Exact sizes are honoured \u2014 no flooring to a multiple of 16, unlike the reference",
+        "   provider. The round-up in requestSizeFor is kept anyway so a candidate produces the",
+        "   same declared sizes as the reference and the two sets stay comparable asset for",
+        "   asset.",
+        "6. NO COST SIGNAL. background, quality and usage all come back null, so there is no",
+        "   per-image figure to record and providerCostUnits stays null. Cost is deployment",
+        "   hours; see COMPARISON.md section 6.",
+        "7. Measured 7-17s per image and roughly 1.3MB per 1024x1024 PNG. That byte size is",
+        "   itself a signal: flat vector art does not compress to 1.3MB."
       ]
     },
-
     {
       "id": "cosmos-3-super",
       "label": "NVIDIA Cosmos 3 Super",
@@ -135,8 +159,8 @@
         "a placeholder rather than a candidate: nothing runs against it and `present()` never",
         "returns it, because it has no manifest. It is KEPT, and kept complete, on purpose.",
         "",
-        "The estate has a stated gap that FLUX cannot fill — 3D and animation, per",
-        "docs/ecosystem/19-new-products.md:97 — so a third model is a question of when, not if,",
+        "The estate has a stated gap that FLUX cannot fill \u2014 3D and animation, per",
+        "docs/ecosystem/19-new-products.md:97 \u2014 so a third model is a question of when, not if,",
         "and Cosmos itself may be redeployed in another region. Everything below is the measured",
         "state of a deployment that briefly existed, and re-establishing it is cheaper than",
         "re-discovering it. What the seam must never become is two hardcoded providers.",
@@ -147,7 +171,7 @@
         "  nvidia--cosmos-3-super         -> 404 DeploymentNotFound (the NATURAL spelling is wrong)",
         "  definitely--not--a--deployment -> 404 DeploymentNotFound (the control)",
         "So a 400 that is not DeploymentNotFound means the gateway reached the model service and",
-        "the service rejected our body — which is the good state, and the reason probe.ts keys on",
+        "the service rejected our body \u2014 which is the good state, and the reason probe.ts keys on",
         "the error CODE rather than on the status. The near-miss spelling costing a 404 is the same",
         "trap the reference provider set with flux-2-pro against FLUX.2-pro.",
         "Cosmos was routing to its model service while Qwen was still returning 500 warming, so the",

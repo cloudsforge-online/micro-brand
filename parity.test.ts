@@ -51,6 +51,8 @@ import {
   managedHeaders,
   MODEL_FIELD,
   modelValueFor,
+  openAiImagesBackend,
+  sizeParamFor,
   isWarming,
   awaitWarm,
   resetWarmingGate,
@@ -205,7 +207,10 @@ test('the reference backend puts the prompt in the body verbatim', () => {
 /* ------------------------------------------------------------------ the stubs */
 
 test('an unimplemented backend throws rather than guessing a wire shape', async () => {
-  for (const candidate of CANDIDATES) {
+  // Qwen is implemented now that its wire shape was measured. What must still refuse is a
+  // provider whose body shape is unknown — and the checklist has to survive, because the next
+  // model will arrive the same way this one did.
+  for (const candidate of CANDIDATES.filter((p) => p.adapter === 'foundry-managed-compute')) {
     assert.equal(candidate.implemented, false, `${candidate.id} claims to be implemented`)
     const backend = managedComputeBackend(candidate)
     assert.throws(() => backend.bodyFor(sampleRequest('anything')), UnimplementedBackendError)
@@ -261,7 +266,6 @@ test('providers.json and the adapters agree about which backends work', () => {
   assert.ok(live().length >= 1)
   assert.ok(live().every((p) => p.status === 'live'))
   for (const candidate of CANDIDATES) {
-    assert.equal(candidate.adapter, 'foundry-managed-compute')
     assert.equal(candidate.shipped, false)
     // The billing unit is not decoration: compare.py refuses to add costs across units, and the
     // whole honesty of §6 depends on this string being right.
@@ -284,6 +288,8 @@ test('the scoring URI is built from the measured route, with the deployment name
   const qwen = providerById('qwen-image-2512')
   assert.equal(qwen.deployment, 'qwen--qwen-image-2512')
   assert.equal(qwen.deploymentVerified, true)
+  // Qwen turned out to serve on an OpenAI-shaped images route, not under /managed-deployments/.
+  assert.equal(qwen.route, '/openai/v1/images/generations')
   assert.equal(
     scoringUri({
       baseUrl: 'https://example.services.ai.azure.com/',
@@ -291,7 +297,7 @@ test('the scoring URI is built from the measured route, with the deployment name
       deployment: qwen.deployment!,
       route: qwen.route!,
     }),
-    'https://example.services.ai.azure.com/managed-deployments/qwen--qwen-image-2512/v1/chat/completions',
+    'https://example.services.ai.azure.com/openai/v1/images/generations',
   )
 
   // Cosmos shares the host, so the deployment name is the only thing separating the two — and it
@@ -400,6 +406,81 @@ test('the managed host is addressed with api-key, never a Bearer token', () => {
 })
 
 /* ------------------------------------------------------------------ c2pa is measured */
+
+test('the Qwen envelope carries the prompt verbatim and transposes the size', () => {
+  const qwen = providerById('qwen-image-2512')
+  assert.equal(qwen.adapter, 'foundry-openai-images')
+  assert.equal(qwen.implemented, true)
+  const backend = openAiImagesBackend(qwen, {
+    baseUrl: 'https://h.example',
+    apiKey: 'k',
+    deployment: 'qwen--qwen-image-2512',
+    route: '/openai/v1/images/generations',
+  })
+  const prompt = 'first paragraph\n\nthe name is "Forge Trade" — accent #2a9e93\n\nlast paragraph'
+  const body = backend.bodyFor({
+    prompt,
+    spec: { kind: 'wordmark', width: 1024, height: 384, format: 'png' },
+    requestWidth: 1024,
+    requestHeight: 384,
+    kitName: 'Forge Trade',
+    accent: '#2a9e93',
+  })
+
+  // Parity: untouched, un-prefixed, un-truncated.
+  assert.equal(body['prompt'], prompt)
+  assert.equal(body['model'], 'qwen--qwen-image-2512')
+  // Required; the OpenAI default `url` is a measured 400 from the model itself.
+  assert.equal(body['response_format'], 'b64_json')
+  assert.equal(body['n'], 1)
+
+  // THE TRAP. Asking this endpoint for 1024x384 delivers 384x1024 while reporting 1024x384, so
+  // the envelope asks for the transpose. A square probe cannot see this — which is how it survived
+  // a careful handover — and every wordmark, OG card and banner in the estate is non-square.
+  assert.equal(body['size'], '384x1024')
+  assert.equal(sizeParamFor(1280, 640), '640x1280')
+  assert.equal(sizeParamFor(512, 512), '512x512', 'squares are unaffected, which is why it hides')
+
+  // width/height are a measured `unrecognized_request_argument` here; the reference provider is
+  // the exact mirror image, taking those and ignoring `size`.
+  assert.equal(body['width'], undefined)
+  assert.equal(body['height'], undefined)
+  assert.deepEqual(
+    Object.keys(body).sort(),
+    ['model', 'n', 'prompt', 'response_format', 'size'],
+    'the body grew a field; if it is prompt-adjacent, parity is at risk',
+  )
+})
+
+test('the two implemented backends are given the identical prompt for one asset', () => {
+  // The end-to-end version of the parity property: same asset, both live providers, compare the
+  // strings that reach the wire rather than the strings that go into the builders.
+  const qwen = providerById('qwen-image-2512')
+  const prompt = 'a prompt with\n\nparagraphs and "quotes" and — dashes'
+  const request = {
+    prompt,
+    spec: { kind: 'mark' as const, width: 1024, height: 1024, format: 'png' as const },
+    requestWidth: 1024,
+    requestHeight: 1024,
+    kitName: 'x',
+    accent: '#e8622c',
+  }
+  const qwenBody = openAiImagesBackend(qwen, {
+    baseUrl: 'https://h.example',
+    apiKey: 'k',
+    deployment: qwen.deployment!,
+    route: qwen.route!,
+  }).bodyFor(request)
+  const fluxBody = referenceBackend(REFERENCE, {
+    endpoint: 'https://f.example',
+    apiKey: 'k',
+    imagePath: '/p',
+    model: 'FLUX.2-pro',
+    fallbackModel: '',
+  }).bodyFor(request)
+  assert.equal(qwenBody['prompt'], fluxBody['prompt'])
+  assert.equal(qwenBody['prompt'], prompt)
+})
 
 test('c2pa is read off the bytes, never asserted', () => {
   assert.equal(measureC2pa(Buffer.from('\x89PNG\r\n\x1a\n....c2pa....')), true)
