@@ -268,13 +268,28 @@ class SetReading:
         if hours is None:
             return ("UNKNOWN", f"{window.name} records no hours")
         figure = f"{hours:g} {billing['unit']}s"
+        # `or`, not `.get(default)`: the default never fires on an explicit null, and these
+        # fields are explicitly null precisely when the news is bad. A missing deletedAt rendering
+        # as "deleted None" would read like a formatting nit while quietly hiding that the meter
+        # is still running.
+        deleted = record.get("deletedAt") or "NOT DELETED — STILL BILLING"
+        created = record.get("createdAt") or "unknown (predates this run; billed lifetime is longer)"
         detail = (
-            f"{record.get('sku', billing.get('sku'))}, created {record.get('createdAt', '?')}, "
-            f"deleted {record.get('deletedAt', 'STILL RUNNING — still billing')}; "
-            f"{len(self.generated)} generations in that window"
+            f"{record.get('sku') or billing.get('sku')}, created {created}, "
+            f"deleted {deleted}; {len(self.generated)} generations in that window"
         )
         if rate:
             detail += f"; at the recorded rate that is {hours * rate:.2f} per hour-unit x hours"
+        if record.get("sharedWith"):
+            # The single most misleading thing a reader could do with this number is divide it by
+            # this repository's generation count. One deployment served every set, so the hours are
+            # JOINT and there is no non-arbitrary way to split them — by asset count, by wall
+            # clock, by pixels? Each gives a different answer and none is a fact.
+            detail += (
+                f"; these hours are SHARED with {', '.join(record['sharedWith'])} — one deployment "
+                "served every set, so they cannot be attributed to this repository alone and must "
+                "not be divided by its generation count"
+            )
         return (figure, detail)
 
 
