@@ -128,6 +128,16 @@ followed by another's — that is eleven separate judgements each made against a
 
 *How much work was it to get an acceptable set?*
 
+**Read this row with care, and after the run it needs a bigger caveat than it had.** The reference
+set's 16-of-54 was accumulated over repeated human review passes — a contact sheet was looked at,
+bad assets were re-rolled, and the count is the record of that. The candidate set was generated in
+one pass and nobody re-rolled anything, so it reads 0-of-54. **That is not Qwen being more
+reliable. It is the two sets having had completely different amounts of human attention**, and
+comparing the numbers directly would credit a model for work nobody did to it.
+
+What the row can honestly be used for is `attempts` with a non-`ok` outcome, which is the machine's
+own count of things that went wrong on the wire rather than a record of anyone's taste.
+
 Free, from the manifests, and the one criterion collected without any extra effort — `retries` is
 incremented by every forced regeneration, whatever the reason, and `attempts` records the failures.
 
@@ -181,6 +191,23 @@ lifetime is.
 ---
 
 ## 7. Known asymmetries, stated rather than discovered later
+
+0. **The reference set has been post-processed and curated; a candidate set has not.** This is the
+   largest confound in the whole comparison and it cuts more than one way:
+
+   - `normalise_ground.py` was run over the reference set (commit `8314af3`, "snap every ground to
+     the exact ash value"), which is why its ground-luma spread is exactly 0.0000 against the
+     candidate's 0.0911. **Ground spread is therefore not a like-for-like model measurement.** The
+     honest reading is the candidate's absolute figure on its own terms.
+   - The reference set was reviewed and re-rolled; the candidate was generated once. See §5.
+
+   The accent, ink-coverage and KB-per-megapixel rows are *not* affected: ground normalisation
+   rewrites near-ground pixels and leaves the artwork alone. Neither is the artefact tally, which
+   is scored on what is drawn.
+
+   The fair comparison to draw is therefore about **what the model put in the frame** — the idea,
+   the colour, the register, the prohibitions it did or did not honour — and not about how uniform
+   the background pixels ended up.
 
 1. **The reference set is not internally prompt-uniform.** 36 of its 54 generated assets carry a
    prompt the current code no longer produces, because the favicon, lettering and accent hardening
