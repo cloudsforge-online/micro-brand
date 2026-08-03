@@ -1,0 +1,23 @@
+{
+  "$scope": "the 12 `mark` assets of each set, scored row by row off review/*/sheet-mark.png, plus trade/wordmark for the lettering row. Marks only, so these are counts out of 12 and not out of the whole set.",
+  "flux-2-pro": {
+    "construction guides drawn": 0,
+    "frame / border / bounding box": 0,
+    "non-flat rendering (3D, bevel, gradient, glow)": 0,
+    "inset duplicate of the mark": 0,
+    "ground not the brand near-black": 0,
+    "accent absent or wrong hue": 0,
+    "idea not recognisable from plan.ts": 0,
+    "lettering: name misspelt or invented": 0
+  },
+  "qwen-image-2512": {
+    "construction guides drawn": 6,
+    "frame / border / bounding box": 5,
+    "non-flat rendering (3D, bevel, gradient, glow)": 6,
+    "inset duplicate of the mark": 0,
+    "ground not the brand near-black": 3,
+    "accent absent or wrong hue": 5,
+    "idea not recognisable from plan.ts": 3,
+    "lettering: name misspelt or invented": 0
+  }
+}

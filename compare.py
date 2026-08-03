@@ -407,6 +407,12 @@ def report(readings: list[SetReading]) -> None:
     row("ink coverage spread (in-kind)", [f"{r.ink_spread:.4f}" for r in readings])
     row("ground luma spread", [f"{spread(r.ground_luma):.4f}" for r in readings])
     row("KB per megapixel (median)", [f"{median(r.bytes_per_mp):.0f}" for r in readings])
+    print("   CONFOUND, and it is a big one: the reference set has had normalise_ground.py run over")
+    print("   it (commit 8314af3, \"snap every ground to the exact ash value\"), which is why its")
+    print("   ground luma spread is exactly 0. A candidate set as generated has not. Ground spread")
+    print("   is therefore NOT a like-for-like model comparison, and the honest reading is the")
+    print("   candidate's absolute figure on its own. The accent, ink and KB/MP rows are unaffected:")
+    print("   normalisation rewrites near-ground pixels only and leaves the artwork alone.")
     print("   KB/MP is a proxy, not a verdict: flat geometric art is large areas of one colour and")
     print("   compresses hard; photographic texture does not. A large gap here means the two models")
     print("   answered the same brief in different REGISTERS, which criterion 2 cares about most.")
@@ -423,7 +429,10 @@ def report(readings: list[SetReading]) -> None:
     print("   Countable here: pale ground, unaccented mark, third hue — all above.")
     tally = REVIEW / "artefacts.json"
     if tally.exists():
-        counts = json.loads(tally.read_text())
+        counts = {k: v for k, v in json.loads(tally.read_text()).items() if not k.startswith("$")}
+        scope = json.loads(tally.read_text()).get("$scope")
+        if scope:
+            print(f"   Tallied by eye over: {scope}")
         for defect in sorted({d for provider in counts.values() for d in provider}):
             row(defect, [str(counts.get(i, {}).get(defect, "-")) for i in ids])
     else:
