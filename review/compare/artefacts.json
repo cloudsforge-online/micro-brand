@@ -1,5 +1,5 @@
 {
-  "$scope": "Scored row by row off review/compare/compare-mark.png and compare-wordmark.png. The first six rows are counts out of the 12 `mark` assets; the lettering row is out of the 9 `wordmark` assets, which are the only kind on this sheet carrying a name. Marks and wordmarks only — not the whole 54.",
+  "$scope": "Scored row by row off review/compare/compare-mark.png and compare-wordmark.png. The first six rows are counts out of the 12 `mark` assets; the lettering row is out of the 9 `wordmark` assets, which are the only kind on this sheet carrying a name. Marks and wordmarks only — not the whole 56.",
   "flux-2-pro": {
     "construction guides drawn": 0,
     "frame / border / bounding box": 0,
@@ -23,6 +23,44 @@
   "$notes": {
     "flux-2-pro lettering": "hub/wordmark reads 'Home on the Ridge' — a phrase lifted from its own idea text in plan.ts rather than the registry name 'Forge Hub'. This is the documented FLUX failure mode (cf. 'Sftware Company', 'Cartre Pere') and it is the one criterion where the challenger is cleanly better: Qwen spelled all nine names correctly and set them more confidently.",
     "qwen-image-2512 accent": "On the wordmarks the accent is absent on create, developers, foresight, market, site, trade and worlds — 7 of 9 drawn in white, grey or bone despite the accent clause naming the exact hex and forbidding plain white and plain grey.",
-    "qwen-image-2512-positive has no column here, deliberately": "That set holds two assets — currency-ember/mark and currency-spark/mark — and every column above is counted out of 12 marks and 9 wordmarks. Putting a 2-asset count in the same row as a 12-asset count would be the most misleading thing available, and compare.py prints these side by side with no denominator. The pilot tally is in COMPARISON.md section 9, with its own denominator stated on every figure."
+    "qwen-image-2512-positive has no column here, deliberately": "That set holds two assets — currency-ember/mark and currency-spark/mark — and every column above is counted out of 12 marks and 9 wordmarks. Putting a 2-asset count in the same row as a 12-asset count would be the most misleading thing available, and compare.py prints these side by side with no denominator. It has a column in `$pilot` below instead, which carries its own denominator of 2."
+  },
+  "$pilot": {
+    "$scope": "This repository's contribution to the estate-wide 15-asset positive-dialect pilot, COMPARISON.md section 9.3. TWO assets — currency-ember/mark and currency-spark/mark — so every figure below is out of 2, not out of the 12 and 9 the columns above use. The other 13 are emberkin's 9 `types` icons and aetherholm's 4 `icons/resource-*`, each recorded in that repository's own $pilot block. claims.py sums the three and checks the section 9.3 table against the sum, which is how a row that does not add up is caught: the table shipped `idea not recognisable` at 2 of 15 for the literal column when the three contributions sum to 1, and the prose four paragraphs below it said 1.",
+    "$assets": [
+      "currency-ember/mark",
+      "currency-spark/mark"
+    ],
+    "$notes": {
+      "why these rows are scored fresh": "The columns above are section 8's tally over 12 marks and 9 wordmarks and cannot be reused at this denominator. These two assets were scored off candidates/<set>/assets/currency-*/mark-1024x1024.png directly, against the construction plan.ts names for each.",
+      "currency-ember, literal": "A circle drawn as a uniform-weight ring with a solid ember flame centred inside it and a flat bar below the ring, clear of it — which IS plan.ts's 'struck coin'. Bevelled, gradient-shaded and standing on a chamfered 3D plinth, so it fails the rendering rows; the IDEA is intact and this row is 0. No frame around it.",
+      "currency-spark, literal": "The flame over rising strokes on the ash ridge with no enclosure, which is plan.ts's idea and the whole distinction from EMBER — so idea is 0. A ruled square lattice with circle guides is drawn across the frame, inside a drawn bounding box: guides 1 and framed 1.",
+      "currency-ember, positive": "The uniform-weight ring became a solid filled disc and the ash bar moved INSIDE it instead of sitting below and clear of it, so the struck-coin construction is no longer readable: idea 1. Added an orange rounded-square frame, and the field reads mid-grey rather than the flat ash.",
+      "currency-spark, positive": "Returned the flame inside a bevelled ring — against an idea whose defining property is that there is no circle, disc, ring or enclosure of any kind around it — on a cream parchment panel with a teal third hue: idea 1, ground 1, framed 1."
+    },
+    "flux-2-pro": {
+      "framed / bordered / boxed": 0,
+      "non-flat (3D, bevel, gradient, glow)": 0,
+      "construction guides drawn": 0,
+      "ground not the flat ash field": 0,
+      "idea not recognisable from the plan": 0,
+      "recognisable pastiche of an existing artwork": 0
+    },
+    "qwen-image-2512": {
+      "framed / bordered / boxed": 1,
+      "non-flat (3D, bevel, gradient, glow)": 2,
+      "construction guides drawn": 1,
+      "ground not the flat ash field": 0,
+      "idea not recognisable from the plan": 0,
+      "recognisable pastiche of an existing artwork": 0
+    },
+    "qwen-image-2512-positive": {
+      "framed / bordered / boxed": 2,
+      "non-flat (3D, bevel, gradient, glow)": 2,
+      "construction guides drawn": 0,
+      "ground not the flat ash field": 2,
+      "idea not recognisable from the plan": 2,
+      "recognisable pastiche of an existing artwork": 0
+    }
   }
 }
