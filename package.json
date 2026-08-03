@@ -37,6 +37,7 @@
     "test": "cd ../studio && node --import tsx --test ../brand/parity.test.ts",
     "verify": "python3 verify.py",
     "sheets": "python3 sheet.py",
-    "compare": "python3 compare.py"
+    "compare": "python3 compare.py",
+    "claims": "python3 claims.py"
   }
 }

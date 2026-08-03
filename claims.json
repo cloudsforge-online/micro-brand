@@ -284,6 +284,37 @@
       "derive": "estate.generated"
     },
     {
+      "document": "README.md",
+      "find": "The estate's actual artwork: (\\d+) files",
+      "derive": "repo.assets"
+    },
+    {
+      "document": "README.md",
+      "find": "reports 0 failures across all (\\d+),",
+      "derive": "repo.assets"
+    },
+    {
+      "document": "README.md",
+      "find": "\\*\\*(\\d+) of the \\d+ files in this repository still carry the C2PA box",
+      "derive": "repo.c2pa",
+      "why": "section 4 read 'no file' and 'all 93' while two files carried the box"
+    },
+    {
+      "document": "README.md",
+      "find": "\\*\\*\\d+ of the (\\d+) files in this repository still carry the C2PA box",
+      "derive": "repo.assets"
+    },
+    {
+      "document": "README.md",
+      "find": "the \\*\\*(\\d+) derivatives\\*\\*",
+      "derive": "repo.derived"
+    },
+    {
+      "document": "README.md",
+      "find": "accent coverage on all (\\d+) files",
+      "derive": "repo.assets"
+    },
+    {
       "document": "materialise.py",
       "find": "([\\d,]+) entries across the three repositories",
       "derive": "estate.assets"
