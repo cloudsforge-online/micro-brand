@@ -297,11 +297,24 @@ def verify_one(provider: providers.Provider, wanted: set[str]) -> tuple[list[str
         # The direction verify.py's per-asset checks cannot see: a file with no provenance at all.
         failures.append(f"{orphan}: on disk with no manifest entry")
 
+    conformance_count = 0
+
     for asset in document["assets"]:
         if wanted and asset["surface"] not in wanted:
             continue
         path = provider.root / asset["path"]
+        # INTEGRITY: is this manifest TRUE about these bytes. Fatal for every set, always.
         problems: list[str] = []
+        # CONFORMANCE: does this art meet the brand specification. Fatal for the SHIPPED set;
+        # reported, loudly and by name, for a candidate.
+        #
+        # A candidate is on trial. "Qwen returned a photograph where the design system asks for
+        # flat vector on a near-black ground" is the answer to comparison criterion 1, not a broken
+        # build — and turning CI red for it would mean the only way to land the evidence is to
+        # weaken a check, which is the one thing that must not happen here. Nothing the shipped set
+        # is held to has changed, and a candidate is still held to every claim it makes about
+        # itself: checksum, dimensions, C2PA, and prompt parity are all integrity.
+        conformance: list[str] = []
 
         if not path.exists():
             failures.append(f'{asset["path"]}: missing')
@@ -328,37 +341,47 @@ def verify_one(provider: providers.Provider, wanted: set[str]) -> tuple[list[str
             ground = sample_ground(image)
             ground_luma = luma(ground)
             if ground_luma > MAX_GROUND_LUMA:
-                problems.append(f"ground {rgb_to_hex(ground)} is too light (luma {ground_luma:.3f})")
+                conformance.append(f"ground {rgb_to_hex(ground)} is too light (luma {ground_luma:.3f})")
 
             reading = read_accent(image, asset["accent"])
             accent_hex = rgb_to_hex(reading.rendered) if reading.rendered else "-"
             floor = MIN_ACCENT_COVERAGE.get(asset["kind"], MIN_ACCENT_COVERAGE_DEFAULT)
             if reading.coverage < floor:
-                problems.append(
+                conformance.append(
                     f'only {reading.coverage * 100:.2f}% of the image is drawn in the registry '
                     f'accent {asset["accent"]} (floor {floor * 100:.1f}%)'
                 )
             if reading.stray > reading.coverage and reading.stray > 0.01:
-                problems.append(
+                conformance.append(
                     f"a third hue at {reading.stray_hue:.0f} degrees covers {reading.stray * 100:.2f}% — "
                     f"more than the accent's {reading.coverage * 100:.2f}% — and neither the accent "
                     f"nor the company ember explains it"
                 )
 
-        mark = "FAIL" if problems else "ok  "
+        fatal = problems + (conformance if provider.shipped else [])
+        conformance_count += len(conformance)
+        mark = "FAIL" if fatal else ("warn" if conformance else "ok  ")
         rows.append(
             f'{mark} {asset["surface"]:<11} {asset["kind"]:<12} {asset["declaredSize"]:>9}  '
             f"ground {rgb_to_hex(ground)} luma {ground_luma:.3f}  "
             f"accent {accent_hex} {reading.coverage * 100:5.2f}%"
         )
-        for problem in problems:
+        for problem in problems + conformance:
             rows.append(f"       -> {problem}")
+        for problem in fatal:
             failures.append(f'{asset["path"]}: {problem}')
 
     rows.append(
         f"\ntarget ground {GROUND} (luma {luma(ground_target):.3f}); "
         f"ceiling {MAX_GROUND_LUMA}, hue tolerance {MAX_HUE_DRIFT:.0f} degrees"
     )
+    if conformance_count and not provider.shipped:
+        rows.append(
+            f"{conformance_count} brand-conformance deviation(s) in this CANDIDATE set — reported, "
+            "not fatal. How far a candidate sits from the design system is comparison criterion 1 "
+            "(see COMPARISON.md), measured by compare.py. The shipped set is still held to all of "
+            "them."
+        )
     return failures, rows, document
 
 
