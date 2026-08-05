@@ -87,8 +87,10 @@ costs money to produce an asset with nowhere to go.
 - **`nda`.** *Ninety Days After* is a Forge Worlds title whose port, `micro-nda`, is a backend
   service on port 4110. It has no frontend in this estate, no registry row and therefore no
   accent — see §7.
-- **The service hostnames** (`nimbus`, `account`, `api`, `worlds-api`, `pay`, `keyvault`,
-  `emberkin`). No browser chrome; `emberkin`'s art is its own repository, `micro-emberkin-assets`.
+- **The service hostnames** (`nimbus`, `account`, `api`, `pay`, `keyvault`, `emberkin`). No browser
+  chrome; `emberkin`'s art is its own repository, `micro-emberkin-assets`. These hosts serve no HTML
+  by design — `servesUi: false` — so they are never presented as pages to open. `worlds-api` was on
+  this list and is **retired**: it was folded into `api.<apex>`, and the hostname has no public DNS.
 
 **`assets/site/wordmark-1024x384.png` is the first real CloudsForge wordmark the estate has had.**
 The file previously called `wordmark.png` elsewhere in the estate is the *Ninety Days After*
