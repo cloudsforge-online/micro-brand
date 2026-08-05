@@ -90,7 +90,8 @@ costs money to produce an asset with nowhere to go.
 - **The service hostnames** (`nimbus`, `account`, `api`, `pay`, `keyvault`, `emberkin`). No browser
   chrome; `emberkin`'s art is its own repository, `micro-emberkin-assets`. These hosts serve no HTML
   by design — `servesUi: false` — so they are never presented as pages to open. `worlds-api` was on
-  this list and is **retired**: it was folded into `api.<apex>`, and the hostname has no public DNS.
+  this list and is **gone**: it was folded into `api.<apex>`, it never had a public DNS record, and
+  its registry row was deleted on 2026-08-05. It needs no accent because it is not a surface.
 
 **`assets/site/wordmark-1024x384.png` is the first real CloudsForge wordmark the estate has had.**
 The file previously called `wordmark.png` elsewhere in the estate is the *Ninety Days After*
