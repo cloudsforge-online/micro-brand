@@ -267,7 +267,7 @@ export const PLAN: readonly PlannedSurface[] = [
  *
  * ## Why they live in micro-brand at all
  *
- * `docs/ecosystem/23-tessera.md:321` specifies `ember-coin` and `spark` as two of sixteen "status
+ * `docs/ecosystem/23-tessera.md` specifies `ember-coin` and `spark` as two of sixteen "status
  * & economy icons" at 256x256, destined for a `micro-tessera-assets` repository that **does not
  * exist yet**. The currency rename is happening now and needs its mark now. micro-brand is the
  * estate's brand repository, already holds every other estate-level mark, and already has the
@@ -281,9 +281,9 @@ export const PLAN: readonly PlannedSurface[] = [
  * in fact carries the NEGATIVE constraint "no currency symbols", from `studio/src/prompt.ts`'s
  * `NO_TEXT`, and that constraint is correct and kept — it is what stops a model drawing a dollar
  * sign instead of this mark. `micro-aetherholm-assets` has zero occurrences too. The 137-asset
- * Emberkin set's `ui/glyph-shard` IS a shard, but a shard of ROCK — `plan.ts:793` asks for "one
+ * Emberkin set's `ui/glyph-shard` IS a shard, but a shard of ROCK — `plan.ts` asks for "one
  * floating four-sided shard of rock, tilted, ... with one straight facet line down its face" — and
- * it is world-building, not money. `micro-emberkin/README.md:44` draws the distinction itself:
+ * it is world-building, not money. `micro-emberkin/README.md` draws the distinction itself:
  * "| The world's floating **shards** | The internal currency, **Shards** |". The left column stays.
  * So this is net-new art, not a replacement, and nothing existing is re-prompted.
  *
@@ -291,17 +291,17 @@ export const PLAN: readonly PlannedSurface[] = [
  *
  * Both marks take `#e8622c`, the CloudsForge ember from the registry's `site` and `hub`. A second
  * hue would say these are two different assets, and that is precisely the error the migration
- * warns against: `docs/ecosystem/23-tessera.md:716` — "**Sparks is a display denomination of
+ * warns against: `docs/ecosystem/23-tessera.md` — "**Sparks is a display denomination of
  * EMBER. It is not a second `assetCode`, and it must never become one.**" So the denomination is
  * carried by FORM, never by colour: EMBER is ENCLOSED in a struck disc and Spark is OPEN, with no
  * enclosure at all. That difference survives greyscale, survives 16 pixels, and survives a reader
- * who cannot tell two warm oranges apart — which is the bar `23-tessera.md:325` sets for this very
+ * who cannot tell two warm oranges apart — which is the bar `23-tessera.md` sets for this very
  * icon set ("distinguishable at 16 px by someone who cannot tell the two accent colours apart").
  *
  * ## No ratio is drawn, and no numeral
  *
- * The subunit ratio is genuinely unsettled in the estate — `23-tessera.md:712` says a Spark is
- * 10^-6 EMBER, `hearth/branding/brand.md:17` says 1e-8, and `hearth/docs/coinnomics.md:33` says
+ * The subunit ratio is genuinely unsettled in the estate — `23-tessera.md` says a Spark is
+ * 10^-6 EMBER, `hearth/branding/brand.md` says 1e-8, and `hearth/docs/coinnomics.md` says
  * the spark was retired — against the 10^3 the rename proposes. Art that depicted a ratio would
  * bake one of four answers into a PNG and be wrong three ways. Neither prompt names a number, and
  * `NO_TEXT` already forbids numerals outright, so settling the ratio later costs no regeneration.

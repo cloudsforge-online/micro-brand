@@ -300,7 +300,7 @@ lifetime is.
    deleted, and is one-way today because the owner withdrew Qwen-Image 2512. The registry, the
    backend interface, the dialect seam and the parity check are all kept rather than collapsed —
    the estate has a
-   stated 3D and animation gap FLUX cannot fill (`docs/ecosystem/19-new-products.md:97`). The
+   stated 3D and animation gap FLUX cannot fill (`docs/ecosystem/19-new-products.md`). The
    registry is the list; a withdrawn provider keeps its entry because the wire facts in it were
    measured, and measured facts are cheaper to re-read than to re-establish.
 

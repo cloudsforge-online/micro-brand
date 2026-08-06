@@ -56,7 +56,7 @@ C2PA_MARKER = b"c2pa"
 
 # ---- the icon: 256 resampled from the 1024 mark, for the currency identities only.
 #
-# 256x256 is what docs/ecosystem/23-tessera.md:321 specifies for `ember-coin` and `spark`. It is
+# 256x256 is what docs/ecosystem/23-tessera.md specifies for `ember-coin` and `spark`. It is
 # resampled from the mark rather than generated at 256, for the same reason the favicons are
 # resampled from 512: a model asked directly for a 256px image returns a worse one than a Lanczos
 # downscale of a 1024px one. No separate heavier source is generated the way `favicon` gets one,

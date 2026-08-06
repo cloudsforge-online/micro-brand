@@ -774,9 +774,9 @@ test('no currency identity is a registry surface', () => {
 })
 
 test('EMBER and Sparks are one currency: same accent, told apart by form', () => {
-  // 23-tessera.md:716 — "Sparks is a display denomination of EMBER. It is not a second assetCode,
+  // 23-tessera.md — "Sparks is a display denomination of EMBER. It is not a second assetCode,
   // and it must never become one." A second hue would say otherwise, and would also fail the bar
-  // 23-tessera.md:325 sets for this icon set: legible to someone who cannot tell two accents
+  // 23-tessera.md sets for this icon set: legible to someone who cannot tell two accents
   // apart. So the denomination is carried by enclosure, and this asserts the colour never becomes
   // the carrier.
   const accents = new Set(CURRENCY.map((c) => c.accent.toLowerCase()))
