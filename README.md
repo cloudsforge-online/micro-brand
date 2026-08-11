@@ -93,6 +93,15 @@ costs money to produce an asset with nowhere to go.
   this list and is **gone**: it was folded into `api.<apex>`, it never had a public DNS record, and
   its registry row was deleted on 2026-08-05. It needs no accent because it is not a surface.
 
+### `social/` — eleven files that are not assets
+
+[`social/`](social/README.md) holds the org's profile artwork: avatars, platform banners and two
+explorer screenshots. It is **not** part of the 98 and not in `MANIFEST.json`, because nothing in it
+was generated — the avatars are resamples of assets that *are* in the manifest, the banners compose
+the product's own header lockup, and a screenshot is a photograph of a running system. `verify.py`
+walks `assets/**/*.png`, so the directory is outside its reach by construction; its own README
+carries the provenance instead.
+
 **`assets/site/wordmark-1024x384.png` is the first real CloudsForge wordmark the estate has had.**
 The file previously called `wordmark.png` elsewhere in the estate is the *Ninety Days After*
 lockup, which is a different product's artwork under the company's name.
