@@ -439,8 +439,10 @@ class _registry_with:
     to a check that could not see a second provider at all, and would prove nothing.
 
     So this appends to the REAL document rather than inventing one: `identity`, `reference` and
-    dialects.json are exactly what ships. What is synthetic is a second SET, which is precisely the
-    thing that no longer exists on disk and nothing else. The challengers are registered `live`,
+    dialects.json are exactly what ships. What is synthetic is a second SET, and nothing else —
+    which for a year was precisely the thing that did not exist on disk, and is why these fixtures
+    are built in memory rather than read from `candidates/`: they must go red in a checkout that
+    has one set, or none, or one that has just been promoted. The challengers are registered `live`,
     because a withdrawn provider with a manifest present would get the same verdict — this function
     compares the manifests it is GIVEN — and registering them live is the harder case to pass.
     """
