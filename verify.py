@@ -64,10 +64,11 @@ Two checks are ABOUT the set of sets rather than about any one image, and both r
      against 94 here, 134 against 137 in emberkin-assets — because the count is written by the
      generator and the last few entries were added by a later tool that did not update it. A
      manifest whose own summary disagrees with its own body is a manifest nobody can quote.
-  6. **PROMPT PARITY — and this is the one that is DORMANT.** For every asset present in more than
-     one set, all sets must record a byte-identical prompt. This is the check the whole comparison
-     rested on: two models asked different questions produce an incomparable answer, and the
-     failure is invisible in the images — it looks like one model being worse at prompt adherence.
+  6. **PROMPT PARITY — dormant for a year, and LIVE again since gpt-image-2 landed.** For every
+     asset present in more than one set, all sets must record a byte-identical prompt. This is the
+     check the whole comparison rests on: two models asked different questions produce an
+     incomparable answer, and the failure is invisible in the images — it looks like one model
+     being worse at prompt adherence.
 
      It compares the MANIFESTS, not PLAN.json and not the prompt-building code, because the
      manifest is the only artefact that records what was actually sent. PLAN.json is regenerated
@@ -76,23 +77,29 @@ Two checks are ABOUT the set of sets rather than about any one image, and both r
      PLAN.json no longer derives. Checking against the code would therefore be checking against a
      thing that has already moved.
 
-     It was shipped before there was a second set and it outlives the second set, and both of
+     It was shipped before there was a second set and it outlived the second set, and both of
      those are the same decision: it binds the first minute a candidate lands, which is the minute
      it matters. What must not happen in between is that the zero it returns gets read as a pass.
 
 
-** ONE CHECK IN HERE IS DORMANT, AND IT SAYS SO ON EVERY RUN. ** The owner withdrew Qwen-Image
-2512 and its candidate trees are deleted, so `check_parity` — the only check here that compares
-SETS rather than reading one manifest and its bytes — has a single operand and returns clean
-because it was handed one document. `main` prints DORMANT instead of a zero, and `--self-test`
-hands the real function two-set fixtures so it cannot quietly stop being able to fail. Every
-other check in this file is unaffected: they read the shipped manifest and the shipped pixels,
-and they would go red today exactly as they would have yesterday.
+** THE CHECK THAT WAS DORMANT IS LIVE AGAIN, AND THE RUN SAYS WHICH IT IS. ** When the owner
+withdrew Qwen-Image 2512 and its candidate trees were deleted, `check_parity` — the only check
+here that compares SETS rather than reading one manifest and its bytes — was left with a single
+operand and returned clean because it had been handed one document. It said DORMANT on every run
+for as long as that was true. `candidates/gpt-image-2` is a second manifest on disk, so a full run
+now compares two sets and prints the count of disagreements it actually found.
+
+The DORMANT wording has NOT been deleted, because dormancy is a property of the SELECTION and not
+of the estate: `verify.py --provider gpt-image-2` hands the function one document and is dormant
+this afternoon whatever is on disk. What changed is which branch a full run takes. `--self-test`
+still hands the real function two-set fixtures on every CI run, and still will after a candidate
+is promoted and the loser deleted, so this cannot quietly stop being able to fail again.
 
     python3 verify.py --self-test    # break the cross-set guard on a fixture; no images needed
     python3 verify.py                                  # every set present, every asset
     python3 verify.py site hub                         # only these surfaces
-    python3 verify.py --provider flux-2-pro            # one set
+    python3 verify.py --provider flux-2-pro            # one set — parity DORMANT by selection
+    python3 verify.py --provider gpt-image-2           # the candidate alone
 """
 
 from __future__ import annotations
@@ -284,18 +291,21 @@ def check_parity(documents: dict[str, dict]) -> list[str]:
     an extra key means something generated a prompt of its own, which is the failure this whole
     check exists to catch.
 
-    ** IT IS DORMANT TODAY, WHICH IS WHY THE EARLY RETURN BELOW IS NARROW AND SAYS SO. ** The owner
-    withdrew Qwen-Image 2512 and both its candidate trees have been deleted, so there is one
-    manifest on disk and this function has nothing to compare it against. It returns clean because
-    it was handed ONE DOCUMENT, not because it looked and found nothing — and an exit code cannot
-    tell those two apart. That is this estate's recurring defect, found five times in a day: a CI
-    job that read image metadata without decoding the image, a grep that skipped files containing
-    NUL bytes, a secret scan whose `-I` discarded the binary stream it was meant to search.
+    ** THE EARLY RETURN BELOW IS NARROW ON PURPOSE, AND THE CALLER SAYS SO OUT LOUD. ** For the
+    year between Qwen-Image 2512 being withdrawn and gpt-image-2 arriving, every repository here
+    held exactly one manifest and this function had nothing to compare it against. It returned
+    clean because it had been handed ONE DOCUMENT, not because it looked and found nothing — and an
+    exit code cannot tell those two apart. That is this estate's recurring defect, found five times
+    in a day: a CI job that read image metadata without decoding the image, a grep that skipped
+    files containing NUL bytes, a secret scan whose `-I` discarded the binary stream it was meant
+    to search.
 
-    So the guard below is spelled "fewer than two sets" and never "no problems"; `main` prints the
-    word DORMANT instead of a reassuring zero; and `python3 verify.py --self-test` runs this exact
-    function against two-set fixtures on every CI run. A SECOND SET WHOSE PROMPT DIFFERS BY ONE
-    WORD MUST STILL FAIL, and that sentence is executable rather than a claim.
+    That state can always come back — a promotion deletes the loser, and `--provider X` narrows a
+    live run to one document on any afternoon — so the guard below is spelled "fewer than two sets"
+    and never "no problems"; `main` prints the word DORMANT instead of a reassuring zero whenever
+    it fires; and `python3 verify.py --self-test` runs this exact function against two-set fixtures
+    on every CI run regardless of what is on disk. A SECOND SET WHOSE PROMPT DIFFERS BY ONE WORD
+    MUST STILL FAIL, and that sentence is executable rather than a claim.
     """
     if len(documents) < 2:
         return []
@@ -373,17 +383,24 @@ def check_parity(documents: dict[str, dict]) -> list[str]:
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════════
-# THE DORMANT CHECK, AND THE MACHINERY THAT PROVES IT CAN STILL BITE
+# THE CHECK THAT CAN GO DORMANT, AND THE MACHINERY THAT PROVES IT CAN STILL BITE
 #
 # `check_parity` above is the only check in this file that is ABOUT THE SET OF SETS. Every other
-# check reads one manifest and the bytes it points at, and goes on working exactly as before. This
-# one compares sets to each other, the owner withdrew the only challenger, and so it now has one
-# operand. Its failure count went to zero at a stroke with nothing about the shipped set changed.
+# check reads one manifest and the bytes it points at, and goes on working whatever else exists.
+# This one compares sets to each other, so when the owner withdrew the only challenger it was left
+# with one operand: its failure count went to zero at a stroke with nothing about the shipped set
+# changed.
 #
 # That is the precise shape of a number improving because a check stopped looking, and this estate
-# has been bitten by it repeatedly. The response here is two things, neither of which is a comment:
+# has been bitten by it repeatedly. The response was two things, neither of which is a comment:
 # `main` prints DORMANT rather than 0, and everything below hands the real function a real second
 # set and fails if it stays green.
+#
+# gpt-image-2 has since put a second manifest on disk, so a full run compares two real sets again.
+# NONE OF THIS MACHINERY IS BEING REMOVED ON THAT NEWS. It is what makes the live run's number
+# trustworthy, it is what will hold when the promotion deletes the loser and the count returns to
+# one, and it costs a fixture and no images to run. A guard deleted the day its subject arrives is
+# a guard that was never doing the work its author claimed.
 # ══════════════════════════════════════════════════════════════════════════════════════════════
 
 #: A recorded prompt that the positive dialect genuinely REWRITES, and whose rewrite comes out with
@@ -477,6 +494,10 @@ def self_test() -> int:
 
     And the dormant state itself is asserted last, on a document that WOULD fail if it had a
     partner — which is the difference between "there is nothing wrong" and "there is nothing here".
+    Followed by the one check here that is about the repository rather than a fixture: that a full
+    run hands the function every set on disk, so a filter added to `selected()` cannot leave a real
+    candidate unread behind a green parity line. It deliberately does not assert HOW MANY sets are
+    on disk; the assertion that used to do that failed the day a second one arrived.
     """
     document = json.loads((HERE / "providers.json").read_text())
     reference_id = document["reference"]
@@ -582,10 +603,35 @@ def self_test() -> int:
         check_parity(lone) == [],
         [],
     )
+    # ---- AND THAT A FULL RUN REALLY COMPARES EVERYTHING ON DISK.
+    #
+    # This slot used to assert `len(providers.present()) == 1` — "and the repository really is in
+    # that state, so the DORMANT line is not decoration". That was true when it was written and it
+    # went false the hour gpt-image-2's manifest landed, failing the self-test for the one reason a
+    # self-test must never fail: the estate got BETTER. Pinning a headcount pins the weather.
+    #
+    # What that line was really guarding is worth keeping, so it is asserted directly instead: a
+    # full run must hand `check_parity` every set that exists. The way this check silently dies is
+    # not the count changing, it is `selected()` growing a filter — on `shipped`, on `status`, on
+    # anything — that quietly drops the candidate, at which point two sets sit on disk and the
+    # comparison between them never runs while the output still says how many failures it found.
+    # That is falsifiable, it is about the code rather than about today, and it holds at one set,
+    # at two, and after a promotion deletes the loser.
+    present = {p.id for p in providers.present()}
+    full_run = {p.id for p in providers.selected(argparse.Namespace(provider=None))}
     check(
-        "and the repository really is in that state, so the DORMANT line is not decoration",
-        len(providers.present()) == 1,
-        [f"{len(providers.present())} set(s) present on disk"],
+        "a full run selects every set on disk, so nothing can sit unread beside a green parity line",
+        full_run == present,
+        [f"on disk: {sorted(present)}", f"a full run reads: {sorted(full_run)}"],
+    )
+    print(
+        f"      (informational: {len(present)} set(s) on disk — "
+        + (
+            "a full run compares them, so parity is LIVE"
+            if len(present) > 1
+            else "a full run is therefore DORMANT, which is what main will print"
+        )
+        + ")"
     )
 
     print("===== self-test: the cross-set guard, broken on a fixture")
@@ -599,6 +645,86 @@ def self_test() -> int:
     print(f"\n{failed} of {len(checks)} self-test(s) failed")
     return 1 if failed else 0
 
+
+
+NATIVE_COLUMNS = ("nativePath", "nativeSize", "nativeSha256", "nativeC2pa")
+
+
+def check_native(asset: dict, root: Path) -> list[str]:
+    """The four `native*` columns, re-derived from the file they name. INTEGRITY, never conformance.
+
+    ## What these columns are, and why they need a check of their own
+
+    Some endpoints refuse to generate at a size this set declares. gpt-image-2 has a minimum pixel
+    budget, measured by bisection to sit in (524288, 655360], which the 1024x384 wordmark and the
+    512x512 favicon both fall under. Those two are generated at an exact multiple of the same
+    aspect ratio and Lanczos'd DOWN by `derive.py --resample`, and the as-delivered file is kept at
+    `native/<surface>/<kind>-<w>x<h>-asdelivered.png` — outside `assets/`, so the orphan walk above
+    does not see it and so materialise.py can never ship it.
+
+    That leaves the shipped-looking PNG one step removed from anything the model returned, which is
+    exactly the situation in which "generated at 1024x384" quietly becomes an upscale of something
+    smaller. Four columns say what the model actually delivered; without this function they are
+    four strings nobody has ever compared to a file, which is this estate's favourite kind of
+    defect. `verify.py`'s whole claim is that a manifest is TRUE about bytes, and the native
+    columns are part of the manifest.
+
+    Five things are checked and every one of them is fatal for a candidate as well as for the
+    shipped set, because all five are claims the manifest makes about itself:
+
+      * the columns arrive together or not at all — three of four is a half-written record
+      * the named file exists, and its sha256 and c2pa state are what the row says (c2pa MEASURED,
+        because re-encoding drops the chunk and the derivative is expected to have lost it while
+        the native is expected to have kept it — the pair is the evidence)
+      * the file's real pixel size is `nativeSize`
+      * the native is not SMALLER than the declared size on either axis. That is the upscale check.
+        A native under the declared size means the shipped file was invented, not downscaled.
+      * the two aspect ratios agree to within half a pixel, so the "derived" file really is this
+        file's downscale and not a differently-shaped image that happens to sit beside it.
+    """
+    if not any(column in asset for column in NATIVE_COLUMNS):
+        return []
+    missing = [column for column in NATIVE_COLUMNS if column not in asset]
+    if missing:
+        return [f"records {', '.join(sorted(set(NATIVE_COLUMNS) - set(missing)))} but not {', '.join(missing)}"]
+
+    problems: list[str] = []
+    native = root / asset["nativePath"]
+    if not native.exists():
+        return [f'nativePath {asset["nativePath"]} is not on disk']
+
+    data = native.read_bytes()
+    if hashlib.sha256(data).hexdigest() != asset["nativeSha256"]:
+        problems.append(f'{asset["nativePath"]}: checksum does not match nativeSha256')
+    carries = b"c2pa" in data
+    if carries != asset["nativeC2pa"]:
+        problems.append(
+            f'{asset["nativePath"]}: manifest says nativeC2pa={asset["nativeC2pa"]} and the bytes '
+            f"say {carries}"
+        )
+
+    with Image.open(native) as raw:
+        measured = raw.size
+    stated = tuple(int(n) for n in asset["nativeSize"].split("x"))
+    if measured != stated:
+        problems.append(
+            f'{asset["nativePath"]}: {measured[0]}x{measured[1]} against a recorded nativeSize '
+            f'{asset["nativeSize"]}'
+        )
+
+    declared = tuple(int(n) for n in asset["declaredSize"].split("x"))
+    if measured[0] < declared[0] or measured[1] < declared[1]:
+        problems.append(
+            f'native {measured[0]}x{measured[1]} is smaller than the declared '
+            f'{asset["declaredSize"]} on at least one axis — the shipped file would be an UPSCALE '
+            "of it, and no set here upscales"
+        )
+    elif abs(measured[0] / measured[1] - declared[0] / declared[1]) > 0.5 / max(declared):
+        problems.append(
+            f'native {measured[0]}x{measured[1]} is not the same shape as the declared '
+            f'{asset["declaredSize"]}, so the shipped file is not a downscale of it'
+        )
+    return problems
 
 
 def verify_one(provider: providers.Provider, wanted: set[str]) -> tuple[list[str], list[str], dict]:
@@ -620,6 +746,18 @@ def verify_one(provider: providers.Provider, wanted: set[str]) -> tuple[list[str
     for orphan in sorted(on_disk - recorded):
         # The direction verify.py's per-asset checks cannot see: a file with no provenance at all.
         failures.append(f"{orphan}: on disk with no manifest entry")
+
+    # The same walk over the as-delivered natives, which live OUTSIDE assets/ and are therefore
+    # invisible to the walk above. They are named by a column rather than by an entry of their own
+    # (an entry the reference does not hold fails check_parity's subset rule, and a PNG under
+    # assets/ with no entry fails the walk above — the column is the only shape that satisfies
+    # both), so "named by nobody" is a state only this walk can catch. It matters because a
+    # leftover native from a re-run is a file a reader would reasonably believe is the source of
+    # the asset beside it, and it would not be.
+    claimed = {asset["nativePath"] for asset in document["assets"] if asset.get("nativePath")}
+    natives = {str(p.relative_to(provider.root)) for p in provider.root.glob("native/**/*.png")}
+    for orphan in sorted(natives - claimed):
+        failures.append(f"{orphan}: an as-delivered native no manifest entry claims")
 
     conformance_count = 0
 
@@ -647,6 +785,11 @@ def verify_one(provider: providers.Provider, wanted: set[str]) -> tuple[list[str
         data = path.read_bytes()
         if hashlib.sha256(data).hexdigest() != asset["sha256"]:
             problems.append("checksum does not match the manifest")
+
+        # INTEGRITY, for the same reason the checksum above is: a claim about bytes, re-derived
+        # from the bytes. Absent on every entry of every set that generates at its declared size,
+        # which is all of the reference set.
+        problems.extend(check_native(asset, provider.root))
 
         # The same marker generate.ts reads, and read the same way: off the bytes on disk.
         carries_c2pa = b"c2pa" in data
@@ -758,18 +901,30 @@ def main(argv: list[str]) -> int:
         for problem in parity:
             print(f"  -> {problem}")
     else:
-        # NEVER A BARE ZERO. This check compares sets to each other, and since the owner withdrew
-        # the Qwen challenger there is one manifest on disk — so it returned clean because it was
-        # handed one document, NOT because it looked and found nothing. Those two states produce
-        # the identical exit code and the identical count, and this estate has spent a day finding
-        # checks in the second one. The word is printed so that a reader scanning the output cannot
-        # mistake an absent operand for a passing comparison.
+        # NEVER A BARE ZERO. This check compares sets to each other, and it was handed one
+        # document — so it returned clean for want of an operand, NOT because it looked and found
+        # nothing. Those two states produce the identical exit code and the identical count, and
+        # this estate has spent a day finding checks in the second one. The word is printed so that
+        # a reader scanning the output cannot mistake an absent operand for a passing comparison.
+        #
+        # Since gpt-image-2 landed there are two manifests on disk and a full run takes the branch
+        # above, so the usual way to arrive HERE is `--provider X`: one set was ASKED for. That
+        # reads very differently to a year of dormancy and the message distinguishes the two, on
+        # what was actually selected rather than on what the file was written believing.
         only = next(iter(documents), "the only set")
-        print(
-            f"===== prompt parity: DORMANT — {only} is the only set on disk, so this check has "
-            "nothing to compare it against. It returned clean because it was handed ONE document, "
-            "not because it looked and found nothing."
+        narrowed = len(providers.present()) > len(documents)
+        because = (
+            f"{only} is the only set this run selected, and {len(providers.present())} are on disk"
+            if narrowed
+            else f"{only} is the only set on disk"
         )
+        print(
+            f"===== prompt parity: DORMANT — {because}, so this check has nothing to compare it "
+            "against. It returned clean because it was handed ONE document, not because it looked "
+            "and found nothing."
+        )
+        if narrowed:
+            print("      Drop --provider to compare the sets against each other.")
         print(
             "      It is exercised against two-set fixtures by `python3 verify.py --self-test`, "
             "which CI runs before this command, so it is not a check that has quietly stopped "

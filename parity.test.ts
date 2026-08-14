@@ -76,6 +76,12 @@ import {
   awaitWarm,
   resetWarmingGate,
   WARMING,
+  openaiImagesBackend,
+  nativeRequestFor,
+  retryAfterSeconds,
+  MIN_PIXEL_BUDGET,
+  OPENAI_IMAGES_GRID,
+  OPENAI_IMAGES_QUALITY,
   type GenerationRequest,
 } from './backends.ts'
 
@@ -511,10 +517,50 @@ test('providers.json and the adapters agree about which backends work', () => {
   assert.ok(live().every((p) => p.status === 'live'))
   for (const candidate of CANDIDATES) {
     assert.equal(candidate.shipped, false)
-    // The billing unit is not decoration: compare.py refuses to add costs across units, and the
-    // whole honesty of §6 depends on this string being right.
-    assert.equal(candidate.billing.unit, 'deployment hour')
     assert.equal(candidate.billing.hourlyRate, null, 'a rate was filled in; check it was measured')
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════════════════════
+  // BILLING IS ASSERTED AS A CONSISTENT SHAPE, NOT AS A LIST OF KNOWN UNIT STRINGS.
+  //
+  // This used to read `assert.equal(candidate.billing.unit, 'deployment hour')` for every
+  // candidate, on the reasoning that the unit string is not decoration — compare.py refuses to add
+  // costs across units and the honesty of COMPARISON.md §6 depends on it being right. The
+  // reasoning was correct and the assertion was the wrong shape for it: it pinned the two units
+  // that happened to exist, so a third one could only ever arrive by editing a test, and the
+  // obvious edit is to widen it into a set of allowed strings that then has to be widened again.
+  //
+  // gpt-image-2 is the third unit — output image tokens, per image, and neither of the other two.
+  // What actually has to hold is not WHICH unit it is but that the unit and the BASIS agree, and
+  // that the basis is one compare.py knows how to read: `per image generated` takes the per-image
+  // path and needs a response field named as its source, `per hour…` takes the deployment-hour
+  // path and needs a DEPLOYMENT.json and a SKU. compare.py branches on `basis` for exactly this
+  // reason. A provider whose blocks disagree would send it down a path that reads a file that is
+  // not there, or would silently report a per-image cost for something that has none.
+  // ══════════════════════════════════════════════════════════════════════════════════════════════
+  for (const provider of PROVIDERS) {
+    const { unit, basis, source, sku } = provider.billing
+    assert.ok(unit.length > 0, `${provider.id}: no billing unit`)
+    assert.ok(
+      basis.startsWith('per image generated') || basis.startsWith('per hour'),
+      `${provider.id}: billing basis "${basis}" is one compare.py cannot dispatch on`,
+    )
+    if (basis.startsWith('per image generated')) {
+      // A per-image provider has to name the response field its figure comes off, because that
+      // figure lands in providerCostUnits on every row and there is no other record of where it
+      // came from months later.
+      assert.ok(
+        source.includes('providerCostUnits'),
+        `${provider.id}: a per-image basis must say which response field providerCostUnits holds`,
+      )
+      assert.equal(sku, null, `${provider.id}: a per-image provider has no hardware SKU`)
+    } else {
+      assert.ok(
+        source.includes('DEPLOYMENT.json'),
+        `${provider.id}: an hourly basis must name the operator's deployment record as its source`,
+      )
+      assert.ok(sku !== null, `${provider.id}: an hourly provider bills for a SKU; name it`)
+    }
   }
   // Withdrawn is a distinct state from unimplemented: the first is "the deployment is gone", the
   // second is "we do not know its wire shape". Cosmos is both, and only the first is why it cannot
@@ -740,6 +786,292 @@ test('the reference asks for the size it wants, and the non-square population is
     assert.equal(body['width'], width)
     assert.equal(body['height'], height)
   }
+})
+
+/* ------------------------------------------------------------------ the openai-images wire */
+
+/**
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ * EVERY ASSERTION BELOW PINS A MEASUREMENT, NOT A DOCUMENTED BEHAVIOUR.
+ *
+ * Eleven probe requests were made against the live deployment, serialised forty seconds apart,
+ * before one asset was generated. Three of the results contradict what the OpenAI images API
+ * documents for this route, and the two that shaped the run are the size rules — 16-pixel
+ * divisibility, and an undocumented minimum pixel budget that had to be bisected.
+ *
+ * These are here rather than in a comment because backends.ts's header is a paragraph a future
+ * reader can disagree with and this is a check that fails. The previous challenger's envelope
+ * tests were deleted with its endpoint; these belong to facts about a deployment that exists.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════
+ */
+
+const GPT = () => providerById('gpt-image-2')
+const gptBackend = () =>
+  openaiImagesBackend(GPT(), { url: 'https://images.example/v1', apiKey: 'k', model: 'gpt-image-2' })
+
+const requestFor = (width: number, height: number, prompt = 'x'): GenerationRequest => ({
+  prompt,
+  spec: { kind: 'mark', width, height, format: 'png' },
+  requestWidth: width,
+  requestHeight: height,
+  kitName: 'Forge Site',
+  accent: '#e8622c',
+})
+
+test('the openai-images envelope carries the prompt verbatim and names the model in the body', () => {
+  const prompt = 'first paragraph\n\nthe name is "Forge Trade" — accent #2a9e93\n\nlast paragraph'
+  const body = gptBackend().bodyFor(requestFor(1024, 1024, prompt))
+  // Untouched, un-prefixed, un-truncated. The whole comparison is this string being identical to
+  // the one FLUX was sent for the same asset.
+  assert.equal(body['prompt'], prompt)
+  // Measured: the route is model-agnostic, so `model` is required in the body. The reference
+  // provider sets the same trap from the other direction — model in the path AND in the body.
+  assert.equal(body['model'], 'gpt-image-2')
+  assert.equal(body['n'], 1)
+  // Measured: `quality` defaults to "low" (91 output tokens at 1280x640). The set is generated at
+  // "high" (7,024 at 1024x1024) because FLUX's serverless deployment has no quality tier, so the
+  // cheap default would be scoring the challenger against a handicap FLUX never had to accept.
+  assert.equal(body['quality'], OPENAI_IMAGES_QUALITY)
+  assert.equal(OPENAI_IMAGES_QUALITY, 'high')
+  // NOT sent, and each absence is a measurement:
+  //   output_format — PNG is this endpoint's default; FLUX returns JPEG unless asked.
+  //   background    — "transparent" is a 400 on this model, and every asset here is on #12100f.
+  //   seed          — a 400 `unknown_parameter`. There is no seed to record on any entry.
+  assert.deepEqual(Object.keys(body).sort(), ['model', 'n', 'prompt', 'quality', 'size'])
+})
+
+test('the size rules are the measured ones: the 16-grid, and a bisected minimum pixel budget', () => {
+  // Both dimensions divisible by 16 — the same granularity FLUX floors to. 1200x630 is a 400.
+  assert.equal(OPENAI_IMAGES_GRID, 16)
+  // The smallest pixel count MEASURED to be accepted (1024x640), not the largest measured to be
+  // refused (1024x512) and not a number interpolated between them. 768x768 sits in that gap.
+  assert.equal(MIN_PIXEL_BUDGET, 655_360)
+  assert.ok(1024 * 512 < MIN_PIXEL_BUDGET, '1024x512 was refused and must stay below the budget')
+  assert.ok(1024 * 640 >= MIN_PIXEL_BUDGET, '1024x640 was accepted and must stay above it')
+
+  // Asked for as they stand: every one of these was delivered at exactly these dimensions.
+  for (const [width, height] of [[1024, 1024], [1200, 640], [1280, 640], [1536, 1024]] as const) {
+    assert.equal(nativeRequestFor(width, height), null, `${width}x${height} needs no native`)
+  }
+
+  // The two this set declares that fall under the budget, and the two sizes that were probed for
+  // them. Both are EXACT integer multiples of the declared size, so the downscale is a clean ratio
+  // rather than a resample onto a fractional grid — 1024x384 x1.5 and 512x512 x2.
+  assert.deepEqual(nativeRequestFor(1024, 384), { width: 1536, height: 576 })
+  assert.deepEqual(nativeRequestFor(512, 512), { width: 1024, height: 1024 })
+
+  // The property that makes the downscale honest, asserted rather than described: the native is
+  // the same shape and it is BIGGER. Nothing anywhere is upscaled.
+  for (const [width, height] of [[1024, 384], [512, 512], [256, 256], [1024, 512]] as const) {
+    const native = nativeRequestFor(width, height)!
+    assert.ok(native.width > width && native.height > height, `${width}x${height} did not grow`)
+    assert.equal(native.width / width, native.height / height, 'the aspect ratio moved')
+    assert.equal(native.width % OPENAI_IMAGES_GRID, 0)
+    assert.equal(native.height % OPENAI_IMAGES_GRID, 0)
+    assert.ok(native.width * native.height >= MIN_PIXEL_BUDGET)
+  }
+})
+
+test('a native request is reported on the result, so the transposition check stays measurable', async () => {
+  // A 1x1 PNG, IHDR only — enough for reportSizing, which reads bytes 16..24.
+  const png = (width: number, height: number): string => {
+    const bytes = Buffer.alloc(24)
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(bytes, 0)
+    bytes.write('IHDR', 12, 'ascii')
+    bytes.writeUInt32BE(width, 16)
+    bytes.writeUInt32BE(height, 20)
+    return bytes.toString('base64')
+  }
+  const respond = (body: string): Response =>
+    new Response(body, { status: 200, headers: { 'content-type': 'application/json' } })
+
+  const backend = openaiImagesBackend(
+    GPT(),
+    { url: 'https://images.example/v1', apiKey: 'k', model: 'gpt-image-2' },
+    {
+      fetch: async () =>
+        respond(JSON.stringify({ data: [{ b64_json: png(1536, 576) }], usage: { output_tokens: 2493 } })),
+      log: () => {},
+    },
+  )
+  const result = await backend.generate(requestFor(1024, 384), AbortSignal.timeout(5_000))
+  // The wordmark falls under the budget, so the backend asked for 1536x576 and SAYS SO. Without
+  // this, generate.ts would measure 1536x576 bytes against a 1024x384 request, report every
+  // wordmark in the set as unsized, and the transposition check would be switched off to quieten
+  // it — which is exactly how a real rotation gets through.
+  assert.deepEqual(result.nativeRequest, { width: 1536, height: 576 })
+  // The provider's own accounting, not ours. Tokens, which is a third billing unit.
+  assert.equal(result.providerCostUnits, 2493)
+  // Null on purpose: this provider reports no megapixel figure, and our own measurement of the
+  // delivered area does not belong in a column named for theirs.
+  assert.equal(result.providerOutputMegapixels, null)
+  // Measured: `seed` is an unknown_parameter here, so there is nothing true to record.
+  assert.equal(result.seed, null)
+  assert.equal(result.backend, 'openai-images')
+
+  // And an asset that clears the budget reports null, which is the normal case.
+  const square = openaiImagesBackend(
+    GPT(),
+    { url: 'https://images.example/v1', apiKey: 'k', model: 'gpt-image-2' },
+    {
+      fetch: async () => respond(JSON.stringify({ data: [{ b64_json: png(1024, 1024) }] })),
+      log: () => {},
+    },
+  )
+  const plain = await square.generate(requestFor(1024, 1024), AbortSignal.timeout(5_000))
+  assert.equal(plain.nativeRequest, null)
+  assert.equal(plain.providerCostUnits, null)
+})
+
+test('a real-sized success envelope is decoded whole, not truncated into a parse error', async () => {
+  // ════════════════════════════════════════════════════════════════════════════════════════════
+  // THE REGRESSION TEST FOR THE DEFECT THAT COST TEN GENERATED IMAGES.
+  //
+  // The backend read the response with `(await response.text()).slice(0, 4_000)` and then parsed
+  // THAT. Every test above passed, because a fixture PNG is 24 bytes and its envelope is around
+  // 150 characters. A real one is a 154KB PNG carried as base64: roughly 205,000 characters. So
+  // the first live run threw `Unterminated string in JSON at position 4000` on every asset, three
+  // retries each, after the endpoint had generated and billed each image.
+  //
+  // This is therefore the one test in this file that cares about SIZE rather than shape, and the
+  // padding below is not decoration — a fixture smaller than the cap cannot fail this way, which
+  // is precisely why nothing caught it. It asserts the bytes come back intact, not merely that
+  // the call resolved: a decode that silently returned a prefix would be worse than a throw.
+  // ════════════════════════════════════════════════════════════════════════════════════════════
+  const bytes = Buffer.alloc(160_000)
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(bytes, 0)
+  bytes.write('IHDR', 12, 'ascii')
+  bytes.writeUInt32BE(1024, 16)
+  bytes.writeUInt32BE(1024, 20)
+  // Not zeroes: base64 of a zero-filled buffer compresses to nothing interesting and would not
+  // resemble the payload that broke this. Deterministic rather than random, so a failure is one
+  // a second run reproduces.
+  for (let index = 24; index < bytes.length; index += 1) bytes[index] = (index * 37) % 251
+
+  const envelope = JSON.stringify({
+    data: [{ b64_json: bytes.toString('base64') }],
+    usage: { output_tokens: 7024 },
+  })
+  assert.ok(envelope.length > 200_000, 'the fixture envelope is not the size of a real one')
+
+  let recorded: readonly { detail: string }[] = []
+  const backend = openaiImagesBackend(
+    GPT(),
+    { url: 'https://images.example/v1', apiKey: 'k', model: 'gpt-image-2' },
+    {
+      fetch: async () =>
+        new Response(envelope, { status: 200, headers: { 'content-type': 'application/json' } }),
+      log: () => {},
+    },
+  )
+  const result = await backend.generate(requestFor(1024, 1024), AbortSignal.timeout(10_000))
+  assert.equal(result.bytes.length, bytes.length)
+  assert.ok(result.bytes.equals(bytes), 'the decoded bytes are not the bytes that were sent')
+  assert.equal(result.providerCostUnits, 7024)
+
+  // And the other half of the fix: the cap moved to where the string is REPORTED. An ok attempt
+  // must not carry a quarter of a megabyte of shredded base64 into the manifest.
+  recorded = result.attempts
+  assert.equal(recorded.length, 1)
+  assert.ok(recorded[0]!.detail.length < 200, `an ok attempt stored ${recorded[0]!.detail.length} chars`)
+  assert.match(recorded[0]!.detail, /^ok, \d+ character envelope$/)
+})
+
+test('a 429 is waited out on the endpoint`s own terms, and counted', async () => {
+  // Measured: AIServices S0 in Sweden Central answers 429 RateLimitReached with "Please retry
+  // after 32 seconds" in the BODY. The standard Retry-After header is not always sent, which is
+  // why both are read and the larger is taken.
+  assert.equal(retryAfterSeconds(new Headers(), 'Please retry after 32 seconds.'), 33)
+  assert.equal(retryAfterSeconds(new Headers({ 'retry-after': '47' }), 'nothing useful'), 48)
+  assert.equal(retryAfterSeconds(new Headers({ 'retry-after': '5' }), 'retry after 32 seconds'), 33)
+  // Null rather than a number invented here: the caller then uses its own blind backoff and says
+  // on stdout that the response did not specify one.
+  assert.equal(retryAfterSeconds(new Headers(), 'nothing useful'), null)
+
+  const slept: number[] = []
+  let call = 0
+  const backend = openaiImagesBackend(
+    GPT(),
+    { url: 'https://images.example/v1', apiKey: 'k', model: 'gpt-image-2' },
+    {
+      fetch: async () => {
+        call += 1
+        if (call <= 2) {
+          return new Response(
+            JSON.stringify({ error: { code: '429', message: 'Please retry after 32 seconds.' } }),
+            { status: 429 },
+          )
+        }
+        const bytes = Buffer.alloc(24)
+        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(bytes, 0)
+        bytes.write('IHDR', 12, 'ascii')
+        bytes.writeUInt32BE(1024, 16)
+        bytes.writeUInt32BE(1024, 20)
+        return new Response(JSON.stringify({ data: [{ b64_json: bytes.toString('base64') }] }), {
+          status: 200,
+        })
+      },
+      log: () => {},
+      sleep: async (ms) => {
+        slept.push(ms)
+      },
+    },
+  )
+  const result = await backend.generate(requestFor(1024, 1024), AbortSignal.timeout(5_000))
+  assert.deepEqual(slept, [33_000, 33_000])
+  // Recorded as attempts, not swallowed. "How many 429s did this set absorb" is a real property of
+  // this provider and one of the things COMPARISON.md has to be able to answer honestly.
+  assert.equal(result.attempts.filter((a) => a.outcome === 'rate_limited').length, 2)
+  assert.equal(result.attempts.at(-1)?.outcome, 'ok')
+})
+
+test('the openai-images backend never puts a credential or a URL in an error', async () => {
+  // THE RULE THIS ESTATE LEARNED THE EXPENSIVE WAY. Node's fetch puts the whole request URL into
+  // the message of any transport exception it throws, and this endpoint's URL names the resource.
+  // That is how bitcoind's rpcauth leaked here, and no redaction rule catches it reliably because
+  // a URL is not token-shaped. So the backend reads the exception's class name and cause code and
+  // never its message.
+  const secret = 'sk-abcdefghijklmnopqrstuvwxyz0123456789ABCDEF'
+  const url = `https://very-secret-resource.services.ai.azure.com/openai/v1/images/generations`
+  const backend = openaiImagesBackend(
+    GPT(),
+    { url, apiKey: secret, model: 'gpt-image-2' },
+    {
+      fetch: async () => {
+        const err = new TypeError(`fetch failed for ${url} with api-key ${secret}`)
+        ;(err as Error & { cause?: unknown }).cause = { code: 'ECONNRESET' }
+        throw err
+      },
+      log: () => {},
+    },
+  )
+  let message = ''
+  try {
+    await backend.generate(requestFor(1024, 1024), AbortSignal.timeout(5_000))
+  } catch (err) {
+    message = (err as Error).message
+  }
+  assert.ok(message.includes('TypeError'), 'the class name is what makes the failure diagnosable')
+  assert.ok(message.includes('ECONNRESET'), 'the syscall code is safe and is the useful half')
+  assert.ok(!message.includes(secret), 'THE KEY IS IN AN ERROR MESSAGE')
+  assert.ok(!message.includes('very-secret-resource'), 'THE ENDPOINT IS IN AN ERROR MESSAGE')
+  assert.ok(!message.includes('azure.com'), 'THE ENDPOINT IS IN AN ERROR MESSAGE')
+})
+
+test('an unconfigured openai-images backend names the variables and never a value', async () => {
+  // Constructible without credentials, and it refuses at generate time rather than at build time —
+  // the same rule the Managed Compute backend follows, so the seam stays exercisable in a test
+  // that never opens a socket.
+  const backend = backendFor(providerById('gpt-image-2'), {})
+  await assert.rejects(
+    () => backend.generate(requestFor(1024, 1024), AbortSignal.timeout(1_000)),
+    (err: Error) => {
+      assert.ok(err.message.includes('AZURE_IMAGES_ENDPOINT'))
+      assert.ok(err.message.includes('AZURE_IMAGES_KEY'))
+      assert.equal(/[A-Za-z0-9_-]{32,}/.test(err.message), false, 'a token-shaped string')
+      return true
+    },
+  )
 })
 
 test('c2pa is read off the bytes, never asserted', () => {

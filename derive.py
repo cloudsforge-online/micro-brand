@@ -168,6 +168,56 @@ def entry(
     }
 
 
+def resample_one(source: Path, target: Path, size: tuple[int, int]) -> dict:
+    """Lanczos one file down to one size and report what the result measures. Nothing else.
+
+    ## Why this mode exists, and why it is here rather than in generate.ts
+
+    Some endpoints refuse to generate at a size this set declares. gpt-image-2 has a minimum pixel
+    budget — measured, by bisection, to sit in (524288, 655360] — which the 1024x384 wordmark and
+    the 512x512 favicon both fall under, so those two are generated at an exact multiple of the
+    same aspect ratio (1536x576 and 1024x1024, both probed) and cut DOWN to the declared size.
+
+    The pixels have to move in Pillow, for the same reason every other resample in this repository
+    does: `studio/src/sizing.ts` measures and deliberately does not resample, because doing it in
+    pure TypeScript is a PNG decoder, a filter reconstructor, a resampler and an encoder, and doing
+    it with `sharp` is a native dependency in a repository that has none. And Pillow rather than
+    macOS `sips` — design-system.md §7 item 3 names `sips` as the reason the estate's
+    post-processing stage exists on exactly one laptop.
+
+    It is in THIS file rather than in a new shared module because `derive.py` is already the
+    per-repository Pillow tool and is already listed under `shared.perRepository` in providers.json.
+    A new `resample.py` would have to go in `shared.acrossAllThree`, which claims.py validates in
+    both directions and which requires every sibling's `shared` block to be byte-identical — a
+    four-repository change to avoid a thirty-line function.
+
+    **This mode never touches the manifest**, on purpose. The caller has the prompt, the model, the
+    attempts and the retry count; this has one source file, one target and one size, so it cannot
+    corrupt a record it does not read. It also does NOT consult `already_derived`: the caller has
+    just paid for these bytes and is writing the asset for the first time.
+    """
+    with Image.open(source) as image:
+        # RGBA before resizing: a palette image resampled in its own mode gives Lanczos nothing to
+        # interpolate between and comes back with the same stair-stepping the downscale was for.
+        resized = image.convert("RGBA").resize(size, Image.LANCZOS)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        resized.save(target, format="PNG", optimize=True)
+    sha, byte_size, c2pa = digest(target)
+    with Image.open(target) as written:
+        measured = written.size
+    return {
+        "sha256": sha,
+        "byteSize": byte_size,
+        # Measured on the bytes written, never inherited from the source. Re-encoding drops the
+        # C2PA chunk, so this is expected to be False even where the native carried one — and it is
+        # reported rather than assumed, because assuming it is the defect this estate shipped once.
+        "c2pa": c2pa,
+        # The caller REFUSES the file if this is not what it asked for. Reported from the file on
+        # disk rather than echoed from the argument, so the check is on the bytes.
+        "size": f"{measured[0]}x{measured[1]}",
+    }
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--provider", default=None, help="provider id from providers.json")
@@ -176,7 +226,22 @@ def main(argv: list[str]) -> int:
         action="store_true",
         help="recut derivatives that are already on record. Rewrites shipped files; see already_derived.",
     )
+    parser.add_argument(
+        "--resample",
+        nargs=3,
+        metavar=("SOURCE", "TARGET", "WxH"),
+        default=None,
+        help="Lanczos SOURCE down to WxH at TARGET and print the result as JSON. Used by "
+        "generate.ts for a provider that refuses to generate at a declared size.",
+    )
     args = parser.parse_args(argv[1:])
+
+    if args.resample:
+        source, target, wanted = args.resample
+        width, height = (int(n) for n in wanted.split("x"))
+        json.dump(resample_one(Path(source), Path(target), (width, height)), sys.stdout)
+        return 0
+
     provider = providers.by_id(args.provider) if args.provider else providers.reference()
 
     root, assets = provider.root, provider.assets
