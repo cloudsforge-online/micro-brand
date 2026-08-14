@@ -15,6 +15,13 @@ prompt, the checksum, the delivered size and the number of times it had to be re
 **All of this artwork is AI-generated.** That is stated here, on every manifest entry, and in the
 licence string carried by each asset. The estate already discloses it and must continue to.
 
+**A second generated set is on disk and is not shipped.** `candidates/gpt-image-2/` holds the same
+brief drawn by a different model, with its own manifest, and `providers.json`'s `reference` field is
+the single thing that decides which of the two `assets/` holds. **§8 is the runbook**: how to look
+at both without switching, how to switch, and how to switch back. The badge above names what ships
+today and nothing else. [COMPARISON.md](COMPARISON.md) §11 is the evaluation, including the kinds
+where the challenger is plainly worse.
+
 Design authority: [`ecosystem/24-asset-model-comparison.md`](https://github.com/cloudsforge-online/micro-docs/blob/main/ecosystem/24-asset-model-comparison.md)
 
 ---
@@ -125,7 +132,9 @@ the attempts that failed.
 ```bash
 cd ../studio && node --import tsx ../brand/generate.ts              # everything missing
 cd ../studio && node --import tsx ../brand/generate.ts --force --only site:wordmark
+cd ../studio && node --import tsx ../brand/generate.ts --provider gpt-image-2   # a candidate set
 python3 verify.py                                                   # measure what is measurable
+python3 verify.py --provider gpt-image-2                            # one set, its own manifest
 python3 sheet.py                                                    # contact sheets into review/
 ```
 
@@ -133,6 +142,22 @@ It runs from `studio/` so `tsx` resolves out of that workspace. Credentials are 
 `../studio/.env.local`, held in one variable and never written, logged or echoed. **This
 repository contains no credential and never should**; `.gitignore` covers `.env*` and the working
 tree was scanned for the key fragment before the first commit.
+
+Each provider names **the variables it reads** in its `providers.json` entry's `env` block, and
+names them only — never a value, and never a value's prefix. `flux-2-pro` reads
+`AZURE_FOUNDRY_ENDPOINT` and `AZURE_FOUNDRY_API_KEY`; `gpt-image-2` reads `AZURE_IMAGES_ENDPOINT`
+and `AZURE_IMAGES_KEY`, which `studio/.env.local` sources from
+`~/.config/cloudsforge/azure-images.env` (mode 600, outside every repository).
+
+**Nothing on a failure path prints a caught error verbatim, and that is a rule with an incident
+behind it.** Node's `fetch` puts the whole request URL — key included, when the key is a query
+parameter — into the exception message, and a credential leaked out of this estate exactly that way
+once. Every adapter in `backends.ts` reports through `redact()`, which truncates and strips, and the
+response body is read **in full** for parsing while only the redacted form reaches an attempt's
+`detail`. Those two are deliberately different lengths: capping the *parsed* string is how a run
+once generated and paid for ten images and delivered none, because a 205,000-character success
+envelope was truncated to 4,000 and handed to `JSON.parse`. `parity.test.ts` now asserts a
+real-sized envelope decodes whole.
 
 ### The prompt
 
@@ -340,6 +365,110 @@ absent one, and a frontend for any of it to appear on.
 nobody has chosen, to an art direction nobody has written, would produce files that cannot be
 wired, cannot be verified against a registry and would be regenerated the day the real surface
 lands.
+
+## 8. Two sets on disk: how to look at both, how to switch, how to switch back
+
+There is more than one generated set here now. `assets/` holds the **shipped** one and
+`candidates/<id>/` holds every set on trial; which is which is one field, `reference`, in
+[providers.json](providers.json). This section is the runbook for the three things anybody ever
+wants to do with that arrangement.
+
+The switch is **one command and its own inverse**, and the reason it is a script rather than four
+lines of `mv` in this README is that a half-finished swap is the one state that loses artwork: the
+shipped tree is out of `assets/` and the candidate has not arrived, and now nothing in the estate
+has a favicon and the thing you would reach for to put it back is the directory you just moved.
+`promote.py` does the moves in an order that cannot leave that gap unattended, re-derives every
+checksum in **both** manifests afterwards, and rolls back file by file if any step fails.
+
+### Look at both, without switching anything
+
+```bash
+python3 sheet.py --provider gpt-image-2         # contact sheets into review/
+python3 compare.py --common                     # side-by-sides into review/compare/, and the numbers
+python3 materialise.py --provider gpt-image-2 --into /tmp/gpt-image-2
+```
+
+`compare.py --common` is the one to reach for while a candidate is still generating: it measures
+only the assets **every** selected set holds, so a partial candidate is compared against the same
+partial slice of the reference rather than being scored against assets it has not been asked for
+yet. Without it, an incomplete set reads as a worse set.
+
+`materialise.py` resolves a set **by identity** — surface, kind, declared size — and writes it into
+a directory laid out exactly like `assets/`, so a candidate can be pointed at a running web app, or
+dropped into a design tool, or diffed against the shipped tree, without `reference` moving and
+without anything in the repository changing. It refuses to write a partial tree (`IncompleteSetError`)
+rather than producing a directory that silently lacks a favicon, and it names anything it cannot
+ship — an as-delivered native at a size no surface declares — with the `-asdelivered` suffix so a
+file that must not be deployed cannot be deployed by accident.
+
+### Switch
+
+```bash
+python3 promote.py --provider gpt-image-2 --dry-run   # says exactly what would move, moves nothing
+python3 promote.py --provider gpt-image-2
+```
+
+What it does, in this order, and why the order is the whole design:
+
+1. **Refuses to start** unless the winner's set is complete by `materialise.resolve`, its
+   `python3 verify.py --provider <id> --as-shipped` subprocess is green, and no destination path is
+   still occupied by the time the plan needs it. All three checks happen before a single byte moves.
+
+   **`--as-shipped` is not decoration and the flag exists because the first real promotion needed
+   it.** `verify.py` holds brand conformance — ground luma, accent floor, third hue — fatal for the
+   **shipped** set and reported-but-not-fatal for a candidate, because a candidate is on trial and
+   "this model drew it too pale" is evidence rather than a broken build. The consequence is that a
+   candidate can exit 0, be promoted on the strength of that, and turn the repository red the
+   moment it lands. `gpt-image-2` does this today: `hub/social` carries 0.32% accent against a 1%
+   floor, which was a `warn` line for the whole evaluation and is a `FAIL` the second it is
+   shipped. So the gate asks the only question a promotion cares about — *what would this set score
+   if it were the shipped one* — and **as of today it refuses to promote `gpt-image-2` for that one
+   asset.** That refusal is the machinery agreeing with COMPARISON.md §11.5 rather than a second
+   opinion: fix the asset, or accept the deviation knowingly with `--skip-verify`, which still runs
+   the completeness and checksum checks.
+2. **The loser vacates first.** `assets/`, `MANIFEST.json`, `native/` and `DEPLOYMENT.json` move
+   from the repository root into the outgoing provider's `candidates/<old-id>/`. The previous
+   reference is **demoted, never deleted** — it becomes a candidate beside the others, its manifest
+   and its as-delivered natives intact, and promoting it back is the same command with the two ids
+   the other way round.
+3. **The winner moves in**, from `candidates/<new-id>/` to the root.
+4. **Both manifests are re-derived off the bytes** before the registry is touched — every `sha256`
+   in the incoming manifest and every `sha256` in the outgoing one. A move that corrupted a file
+   fails here, with both trees still on disk.
+5. **Only then is `providers.json` edited**, and surgically: the `reference` field, and the
+   `root`/`shipped` pair on each of the two entries. Exactly five lines change. It is a text edit
+   rather than a load-and-dump because this file does **not** round-trip through `json.dumps` in
+   either `ensure_ascii` mode — it mixes escaped and literal em dashes — and a promotion that
+   silently reformatted 350 lines of registry commentary would bury its own five-line change.
+
+Any failure at any step rolls the moves back one file at a time and leaves the registry alone.
+
+### Switch back
+
+```bash
+python3 promote.py --provider flux-2-pro
+```
+
+That is the whole of it. The inverse is not a special mode, a `--revert` flag or a backup: it is the
+same command naming the other provider, because step 2 demoted rather than deleted. The registry
+rewrite is checked to be exactly invertible — running the rewrite in the opposite direction over
+the promoted file reproduces the original bytes — so a switch and a switch back leave this
+repository where it started.
+
+### What a switch does NOT do
+
+- **It does not touch the sibling repositories.** Around twenty of them hardcode
+  `assets/<surface>/favicon-32x32.png`; that path is stable across a promotion **by design**, which
+  is why the reference set's root is the repository itself rather than `sets/flux/`. A promotion
+  changes the bytes at those paths and no consumer's path.
+- **It does not re-derive derivatives.** A promoted set ships the derivatives its own manifest
+  records, generated by `derive.py` from that set's own natives. Nothing is inherited across a
+  switch.
+- **It does not normalise the ground.** `normalise_ground.py` hardcodes `Path("assets")` and takes
+  no `--provider`, so running it after a promotion would rewrite the newly shipped set's pixels and
+  strip its C2PA boxes. **It is not part of the promotion and must not be added to it** without
+  first giving it the `--provider` argument it does not have; see COMPARISON.md §11.2, where that
+  same hardcoded path is the confound in the ground comparison.
 
 ---
 
