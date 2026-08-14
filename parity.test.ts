@@ -1127,3 +1127,34 @@ test('derive.py ICON_SURFACES has not drifted from plan.ts CURRENCY', () => {
   const copied = [...block[1]!.matchAll(/"([^"]+)"/g)].map((m) => m[1]!)
   assert.deepEqual(copied.sort(), CURRENCY.map((c) => c.key).sort())
 })
+
+test('promote.py asks verify.py the SHIPPED question, not the candidate one', () => {
+  // The defect this pins was found by running the switch rather than by reading it, and it is the
+  // kind that only appears once: verify.py holds brand conformance FATAL for the shipped set and
+  // reported-not-fatal for a candidate — correctly, because a candidate is on trial — so a set can
+  // exit 0 as a candidate, be promoted on the strength of that, and turn the repository red the
+  // instant it lands under rules it was never held to. gpt-image-2 did exactly that on the first
+  // real promotion: hub/social carries 0.32% accent against a 1% floor, a `warn` line for the whole
+  // evaluation and a `FAIL` one second after the move.
+  //
+  // Asserted from the source text because the two files are Python and this suite is the only
+  // place the estate checks them together. If either half is removed the gate silently reverts to
+  // asking the wrong question, and the symptom would be a red repository rather than a refused
+  // switch — which is the difference between a promotion that did not happen and one that has to
+  // be undone by hand.
+  const promote = readFileSync(new URL('./promote.py', import.meta.url), 'utf8')
+  const verify = readFileSync(new URL('./verify.py', import.meta.url), 'utf8')
+
+  assert.ok(
+    /"verify\.py"\)[^\]]*"--provider", provider_id, "--as-shipped"/.test(promote),
+    'promote.py must run verify.py with --as-shipped as its pre-move gate',
+  )
+  assert.ok(
+    /add_argument\(\s*"--as-shipped"/.test(verify),
+    'verify.py must offer --as-shipped for promote.py to ask for it',
+  )
+  assert.ok(
+    /fatal = problems \+ \(conformance if \(provider\.shipped or as_shipped\) else \[\]\)/.test(verify),
+    'verify.py --as-shipped must make conformance fatal, which is the only thing it may change',
+  )
+})

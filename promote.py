@@ -46,8 +46,11 @@ is a complete, symmetric undo, because flux-2-pro is by then an ordinary candida
   2. `verify.py --provider <id>` passes on the candidate AS IT STANDS TODAY, at its candidate
      root. Refusing here rather than after the move is the difference between a switch that did
      not happen and a repository in a half-swapped state.
-  3. No destination path already exists. A leftover `candidates/flux-2-pro/` from a previous run
-     is a stop, not something to merge into.
+  3. No destination path already exists THAT THE PROMOTION DOES NOT ITSELF VACATE. The winner's
+     destinations are `assets/` and `MANIFEST.json` at the root, which are occupied by the
+     outgoing reference until the first two moves carry it to `candidates/`; the check walks the
+     plan in order and asks whether a path is still occupied by the time it is needed. A leftover
+     `candidates/flux-2-pro/` from an interrupted run is a stop, not something to merge into.
 
 And after the move, before the registry is written: every sha256 in BOTH manifests is re-derived
 from the bytes at their new paths. If a single one disagrees the move is rolled back file by file
@@ -125,9 +128,19 @@ def check_manifest_against_bytes(manifest: Path, root: Path) -> list[str]:
 
 
 def run_verify(provider_id: str) -> tuple[bool, str]:
-    """verify.py on one set, as a subprocess, so its exit code is the answer and not a rewrite."""
+    """verify.py on one set, as a subprocess, so its exit code is the answer and not a rewrite.
+
+    `--as-shipped` is the whole point of this gate and was added the day the first real promotion
+    was run. Without it, verify.py reads brand conformance as fatal for the SHIPPED set and as a
+    reported warning for a candidate — correctly, because a candidate is on trial — so a candidate
+    can exit 0 here, be moved onto `assets/`, and turn the repository red on the next run under
+    rules it was never held to. gpt-image-2 did exactly that: `hub/social` at 0.32% accent against a
+    1% floor was a `warn` line for the entire evaluation and a `FAIL` one second after the move.
+    The question this gate has to ask is not "is the candidate acceptable as a candidate" but "what
+    would this set score if it were the shipped one", and that is the flag.
+    """
     result = subprocess.run(
-        [sys.executable, str(HERE / "verify.py"), "--provider", provider_id],
+        [sys.executable, str(HERE / "verify.py"), "--provider", provider_id, "--as-shipped"],
         capture_output=True,
         text=True,
         cwd=HERE,
@@ -272,25 +285,74 @@ def main(argv: list[str]) -> int:
         raise SystemExit(f"{winner.id} has no manifest at {relative(winner.manifest)} — nothing to promote")
 
     # ---- 1. completeness, in exactly the sense a consumer means it
-    materialise.resolve(winner, None)
+    #
+    # The error is materialise.py's, re-raised with this command's own vocabulary appended rather
+    # than reworded. materialise.py is byte-identical across three repositories (providers.json's
+    # `shared` block, checked by claims.py), so editing its message to suit this caller would fork
+    # a shared file to fix a sentence. What that message ends with — "narrow the switch with
+    # --only" — is TRUE OF materialise.py AND FALSE OF THIS ONE: a partial materialise is a useful
+    # thing to look at, and a partial promotion is a shipped set that is half one model and half
+    # another, which is the one outcome this whole file exists to prevent. So the flag is not
+    # offered here and the reason is said out loud, because an error message that names an option
+    # the command does not have sends the reader to `--help` to find out who is lying.
+    try:
+        materialise.resolve(winner, None)
+    except materialise.IncompleteSetError as incomplete:
+        raise SystemExit(
+            f"{incomplete}\n"
+            "  Read that last line as materialise.py's, because it is: this command has no --only\n"
+            "  and will not be given one. A partial materialise is a directory to look at. A\n"
+            "  partial promotion is a SHIPPED set that is partly one model and partly another,\n"
+            "  with nothing on any file saying which — and every consumer of assets/ would inherit\n"
+            "  it. Finish the set, then promote it.\n"
+        ) from incomplete
 
-    # ---- 2. the candidate must pass its own verify BEFORE anything moves
+    # ---- 2. the candidate must pass verify UNDER THE SHIPPED SET'S RULES before anything moves
     if not args.skip_verify:
         ok, output = run_verify(winner.id)
         if not ok:
             print(output)
             raise SystemExit(
-                f"\n{winner.id} does not pass `python3 verify.py --provider {winner.id}`. Nothing "
-                "has moved. Promoting a set whose manifest is not true about its own bytes would "
-                "make that untruth the shipped state. --skip-verify is the deliberate override, "
-                "and the checksum re-derivation after the move still runs."
+                f"\n{winner.id} does not pass `python3 verify.py --provider {winner.id} "
+                "--as-shipped`. Nothing has moved. Promoting a set whose manifest is not true about "
+                "its own bytes would make that untruth the shipped state, and promoting one that "
+                "misses the design system would move the repository's own definition of correct. "
+                "Read the FAIL lines above: if they are conformance rather than integrity, the "
+                "choice is to fix the assets, or to accept the deviation knowingly with "
+                "--skip-verify, which still runs the completeness and checksum checks."
             )
 
     moves = plan_moves(winner, loser)
-    collisions = [dst for _, dst in moves if dst.exists()]
+
+    # ---- 3. no destination is occupied by anything the plan does not itself move out of the way
+    #
+    # THIS CHECK WAS WRONG WHEN IT WAS WRITTEN AND IT COULD NEVER HAVE PASSED. It asked
+    # `dst.exists()` over every move, and the winner's destinations are `assets/` and
+    # `MANIFEST.json` at the root — which exist by definition, because that is where the OUTGOING
+    # reference is sitting until the first two moves carry it to `candidates/`. Every promotion
+    # this repository could ever attempt would have stopped here with "REFUSING TO MOVE — these
+    # destinations already exist: assets, MANIFEST.json", which reads exactly like the leftover
+    # half-swap it was written to catch.
+    #
+    # It went unnoticed because the check upstream of it fired first for the whole life of the
+    # branch: the candidate stood at 97 of 98 entries (`site/avatar@1024x1024` had no derivation
+    # recipe), so step 1 exited before this ever ran. A gate that is only reachable once an earlier
+    # gate is satisfied is untested until the day it matters, which is the day it is load-bearing.
+    #
+    # The fix keeps the real intent — a leftover `candidates/flux-2-pro/` from an interrupted run
+    # IS a stop, and merging into it would silently mix two sets — by walking the plan IN ORDER and
+    # treating a path as free once an earlier move has vacated it. Order is not incidental here:
+    # plan_moves puts the loser first for this exact reason, and the two now agree.
+    vacated: set[Path] = set()
+    collisions = []
+    for source, destination in moves:
+        if destination.exists() and destination not in vacated:
+            collisions.append(destination)
+        vacated.add(source)
     if collisions:
         raise SystemExit(
-            "REFUSING TO MOVE — these destinations already exist:\n  "
+            "REFUSING TO MOVE — these destinations already exist and nothing in this promotion "
+            "vacates them:\n  "
             + "\n  ".join(relative(p) for p in collisions)
             + "\nNothing has moved. Clear them, or work out why a previous promotion left them.\n"
         )
@@ -311,7 +373,7 @@ def main(argv: list[str]) -> int:
             shutil.move(str(source), str(destination))
             done.append((source, destination))
 
-        # ---- 3. both manifests, re-derived from the bytes at their NEW locations
+        # ---- 4. both manifests, re-derived from the bytes at their NEW locations
         problems = check_manifest_against_bytes(HERE / "MANIFEST.json", HERE)
         problems += check_manifest_against_bytes(
             HERE / "candidates" / loser.id / "MANIFEST.json", HERE / "candidates" / loser.id
@@ -332,6 +394,17 @@ def main(argv: list[str]) -> int:
         for source, destination in reversed(done):
             shutil.move(str(destination), str(source))
         raise SystemExit(f"\nPROMOTION ROLLED BACK, nothing changed: {exc}\n") from exc
+
+    # The winner's candidate directory is empty now — every artefact it held was just moved to the
+    # root — and an empty `candidates/gpt-image-2/` left lying about says "there is a set here"
+    # to every reader and to `ls`, while `promote.py --list` correctly says the set is shipped.
+    # git does not track empty directories, so nothing in a fresh clone would show it and only the
+    # person who ran the switch would ever see the debris. Pruned AFTER the registry is written, so
+    # a rollback never has to recreate it, and only ever under `candidates/`: `rmdir` fails loudly
+    # on a non-empty directory, which is the behaviour wanted if this is ever wrong.
+    winner_root = HERE / "candidates" / winner.id
+    if winner_root.is_dir() and not any(winner_root.iterdir()):
+        winner_root.rmdir()
 
     print(f"promoted {winner.id} ({winner.label}) to the shipped set at assets/")
     print(f"demoted  {loser.id} ({loser.label}) to candidates/{loser.id}/ — kept, not deleted")

@@ -66,6 +66,70 @@ ICON_STEP = 256
 # drift. Only these surfaces get an icon; the registry surfaces get favicons instead.
 ICON_SURFACES = ("currency-ember", "currency-spark")
 
+# ---- the org avatar: the one derivative that had no recipe, written down at last.
+#
+# WHY THIS IS HERE NOW, WHICH IS A STORY ABOUT A SECOND PROVIDER RATHER THAN ABOUT AN AVATAR.
+# `site/avatar@1024x1024` was cut BY HAND from the site mark before this file had a provider
+# argument, and parity.test.ts still calls it "a legitimate orphan" because it is in no plan. That
+# was harmless while there was one set: the file existed, its checksum was on record, and nothing
+# ever needed a second one. Then a candidate set was generated and came back 97 of 98 — complete on
+# every asset a machine knows how to make and one short on the only asset a person had made — and
+# `promote.py` correctly refused to switch to it. A derivative with no recipe is a set that can
+# never be promoted, and that is a much bigger defect than a missing avatar.
+#
+# So the hand operation is measured off the shipped file and written down as a function. It is
+# deliberately expressed as the RATIO the reference file exhibits rather than as the crop box that
+# produced it, because a crop box is a fact about one mark's composition and every model composes
+# differently: FLUX drew this mark's artwork 640px wide inside its 1024 frame and gpt-image-2 drew
+# it 694px wide, so the same crop box would give the two avatars visibly different weights.
+#
+# AND IT UPSCALES, WHICH IS SAID OUT LOUD RATHER THAN BURIED. Every other derivation in this file
+# goes DOWN — a centre crop invents no pixel and a Lanczos downscale of a 1024 beats asking a model
+# for a 256. This one goes up, by 1.18x on the reference file and 1.09x on the candidate, because
+# an avatar is a mark with its margins taken in and there is no larger source to take them in from.
+# It is recorded in the entry's `note`, it is `derivedFrom` a generated file rather than presented
+# as a generation, and no OTHER asset in this repository is produced this way. Generating an avatar
+# separately would break the relationship `derivedFrom` asserts — the avatar must be the same
+# drawing as the mark, not another draw of the same brief.
+AVATAR_SURFACE = "site"
+AVATAR_KIND = "avatar"
+AVATAR_SIZE = (1024, 1024)
+AVATAR_FILENAME = "org-avatar-1024x1024.png"
+# Measured on assets/site/org-avatar-1024x1024.png: the artwork spans 757px inside a 1024 frame,
+# with 133px of ground to its left and 134px to its right. 758/1024 is that width as a fraction,
+# and it is what the hand cut chose; nothing derives it from first principles.
+AVATAR_ARTWORK_FRACTION = 758 / 1024
+# Below this the crop is not worth doing. If a model already drew the mark filling the frame, the
+# avatar is the mark, and resizing 1024 to 1024 to move it 1% would be a re-encode for nothing.
+AVATAR_MIN_SCALE = 1.02
+
+
+def artwork_bbox(image: Image.Image) -> tuple[int, int, int, int]:
+    """The bounding box of everything that is not the ground, measured off the corner pixel.
+
+    The corner is the ground BY CONSTRUCTION here — every prompt in this set ends with a paragraph
+    demanding one flat unbroken field edge to edge, and `verify.py` fails any asset whose corners
+    say otherwise. So this reads the corner rather than assuming a hex, which matters for a
+    candidate set that has not been through `normalise_ground.py` and whose ground is its own
+    near-black rather than exactly #12100f.
+
+    The threshold is a sum over three channels, not a per-channel one, so a faint chromatic wash
+    does not register as artwork while a genuine accent stroke does at any hue.
+    """
+    rgb = image.convert("RGB")
+    ground = rgb.getpixel((0, 0))
+    assert isinstance(ground, tuple)
+    # Pillow's own difference-and-bbox is the fast path and gives the same answer as walking the
+    # pixels, which is what this did first and what it was checked against.
+    from PIL import ImageChops
+
+    flat = Image.new("RGB", rgb.size, ground)
+    difference = ImageChops.difference(rgb, flat).convert("L").point(lambda v: 255 if v > 20 else 0)
+    box = difference.getbbox()
+    if box is None:
+        raise ValueError("no artwork found: every pixel matches the corner, so there is nothing to centre")
+    return box
+
 
 def load_parents(manifest: Path) -> dict[tuple[str, str], dict]:
     """Index the existing manifest by (surface, kind) so a derivative inherits its source's record.
@@ -149,7 +213,12 @@ def entry(
         "requestedSize": parent["requestedSize"],
         "deliveredSize": f"{delivered[0]}x{delivered[1]}",
         "sizing": "exact" if tuple(delivered) == declared else "unsized",
-        "cropped": kind.startswith("og"),
+        # The OG card is a centre crop of its as-delivered source, and the avatar is a centre crop
+        # of the mark scaled back up. `avatar` is named here rather than folded into a prefix test
+        # because the shipped entry has read `cropped: true` since it was cut by hand, and a
+        # recipe that reproduced the file while contradicting its own record would be worse than
+        # no recipe at all.
+        "cropped": kind.startswith("og") or kind == AVATAR_KIND,
         "derivedFrom": str(source.relative_to(root)),
         "backend": parent["backend"],
         "model": parent["model"],
@@ -324,6 +393,79 @@ def main(argv: list[str]) -> int:
                     ),
                 )
             )
+
+        # ---- the org avatar: the site mark with its margins taken in. The `site` surface only.
+        if surface == AVATAR_SURFACE:
+            mark = surface_dir / "mark-1024x1024.png"
+            parent = parents.get((surface, "mark"))
+            target = surface_dir / AVATAR_FILENAME
+            kept = keep_or_cut(surface, AVATAR_KIND, AVATAR_SIZE, target)
+            if kept is not None:
+                # This is the branch the SHIPPED set takes on every run, and it is the reason
+                # adding this recipe cannot rewrite the hand-cut file: the entry is on record, the
+                # checksum on disk still matches it, and the bytes are returned untouched. It was
+                # checked by running the whole file over the reference set and diffing.
+                out.append(kept)
+            elif mark.exists() and parent:
+                with Image.open(mark) as image:
+                    frame_width, frame_height = image.size
+                    left, top, right, bottom = artwork_bbox(image)
+                    artwork = max(right - left, bottom - top)
+                    wanted = frame_width * AVATAR_ARTWORK_FRACTION
+                    scale = wanted / artwork if artwork else 1.0
+                    # Never crop outside the frame, and never bother for a hair. If the model
+                    # already filled the frame past the target, `scale` is <= 1 and the crop side
+                    # would exceed the frame; both cases fall through to a straight copy of the
+                    # mark, which is the honest answer — the avatar IS the mark at that point.
+                    side = min(frame_width, frame_height, round(frame_width / scale))
+                    if scale < AVATAR_MIN_SCALE or side >= frame_width:
+                        crop_note = (
+                            f"The mark already fills {artwork / frame_width:.0%} of its frame, "
+                            f"which is at or past the {AVATAR_ARTWORK_FRACTION:.0%} an avatar "
+                            "wants, so this is the mark re-encoded at the same size and NOTHING "
+                            "was scaled."
+                        )
+                        avatar = image.convert("RGBA")
+                    else:
+                        # Centred on the FRAME, not on the artwork's own bbox. Every prompt in this
+                        # set says "optically centred" and verify.py does not check it, so centring
+                        # on the bbox would silently correct a model that drew off-centre and hide
+                        # exactly the defect criterion 1 is looking for.
+                        offset_x = (frame_width - side) // 2
+                        offset_y = (frame_height - side) // 2
+                        avatar = (
+                            image.convert("RGBA")
+                            .crop((offset_x, offset_y, offset_x + side, offset_y + side))
+                            .resize(AVATAR_SIZE, Image.LANCZOS)
+                        )
+                        crop_note = (
+                            f"Centre-cropped to {side}x{side} and Lanczos-scaled back to "
+                            f"{AVATAR_SIZE[0]}x{AVATAR_SIZE[1]} — an UPSCALE of "
+                            f"{frame_width / side:.2f}x. It is the only upscale in this "
+                            "repository and it is stated rather than implied: an avatar is the "
+                            "mark with its margins taken in, and there is no larger source to "
+                            "take them in from. The mark's artwork measured "
+                            f"{artwork}px inside a {frame_width}px frame and an avatar wants "
+                            f"{AVATAR_ARTWORK_FRACTION:.0%} of it."
+                        )
+                    avatar.save(target, format="PNG", optimize=True)
+                out.append(
+                    entry(
+                        parent,
+                        root=root,
+                        kind=AVATAR_KIND,
+                        path=target,
+                        declared=AVATAR_SIZE,
+                        source=mark,
+                        note=(
+                            f"{crop_note} The org profile picture, cut from this provider's OWN "
+                            "mark so the avatar and the mark are the same drawing rather than two "
+                            "answers to one brief. Re-encoding drops the C2PA chunk; the invisible "
+                            "pixel watermark is unaffected and the 1024 mark is kept beside this "
+                            "file. social/ holds the resamples of it that the platforms want."
+                        ),
+                    )
+                )
 
         # ---- the currency icon: 256 resampled from the 1024 mark. Currency surfaces only.
         if surface in ICON_SURFACES:

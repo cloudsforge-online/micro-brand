@@ -727,7 +727,9 @@ def check_native(asset: dict, root: Path) -> list[str]:
     return problems
 
 
-def verify_one(provider: providers.Provider, wanted: set[str]) -> tuple[list[str], list[str], dict]:
+def verify_one(
+    provider: providers.Provider, wanted: set[str], as_shipped: bool = False
+) -> tuple[list[str], list[str], dict]:
     document = json.loads(provider.manifest.read_text())
     ground_target = hex_to_rgb(GROUND)
 
@@ -825,7 +827,7 @@ def verify_one(provider: providers.Provider, wanted: set[str]) -> tuple[list[str
                     f"nor the company ember explains it"
                 )
 
-        fatal = problems + (conformance if provider.shipped else [])
+        fatal = problems + (conformance if (provider.shipped or as_shipped) else [])
         conformance_count += len(conformance)
         mark = "FAIL" if fatal else ("warn" if conformance else "ok  ")
         rows.append(
@@ -843,12 +845,20 @@ def verify_one(provider: providers.Provider, wanted: set[str]) -> tuple[list[str
         f"ceiling {MAX_GROUND_LUMA}, hue tolerance {MAX_HUE_DRIFT:.0f} degrees"
     )
     if conformance_count and not provider.shipped:
-        rows.append(
-            f"{conformance_count} brand-conformance deviation(s) in this CANDIDATE set — reported, "
-            "not fatal. How far a candidate sits from the design system is comparison criterion 1 "
-            "(see COMPARISON.md), measured by compare.py. The shipped set is still held to all of "
-            "them."
-        )
+        if as_shipped:
+            rows.append(
+                f"{conformance_count} brand-conformance deviation(s), FATAL HERE because --as-shipped "
+                "asked what this set would score if it were the shipped one. It is not the shipped "
+                "one, so nothing is red today; this is the answer to 'may it be promoted', and the "
+                "answer is no until these are fixed or knowingly accepted."
+            )
+        else:
+            rows.append(
+                f"{conformance_count} brand-conformance deviation(s) in this CANDIDATE set — reported, "
+                "not fatal. How far a candidate sits from the design system is comparison criterion 1 "
+                "(see COMPARISON.md), measured by compare.py. The shipped set is still held to all of "
+                "them."
+            )
     return failures, rows, document
 
 
@@ -860,6 +870,27 @@ def main(argv: list[str]) -> int:
         "--self-test",
         action="store_true",
         help="break the cross-set guard against a fixture and prove it goes red. No images needed.",
+    )
+    # WHY THIS EXISTS, and it was found by running promote.py rather than by reasoning about it.
+    #
+    # Conformance is fatal for the SHIPPED set and reported-not-fatal for a candidate, which is the
+    # right split and is argued at length beside `fatal =` above. The consequence nobody had stated
+    # is that a candidate can pass `verify.py --provider <id>` with 0 failures, be promoted on the
+    # strength of it, and turn the repository RED the instant it lands — because the same deviation
+    # is now being read under the shipped set's rules. That is exactly what gpt-image-2 did on the
+    # first real promotion: `hub/social` carries 0.32% accent against a 1% floor, which was a `warn`
+    # line for the whole evaluation and became `FAIL hub social` one second after the move.
+    #
+    # So this flag asks the only question a promotion actually cares about: what would this set
+    # score IF IT WERE SHIPPED. promote.py runs it as its pre-move gate, which is the difference
+    # between a switch that is refused and a switch that has to be undone. It changes what counts
+    # as fatal and NOTHING else — no check is added, removed, loosened or re-ordered, and a set
+    # that is already shipped is unaffected because it is held to these rules anyway.
+    parser.add_argument(
+        "--as-shipped",
+        action="store_true",
+        help="hold a CANDIDATE to the shipped set's rules: brand conformance becomes fatal. What "
+        "promote.py asks before it moves anything.",
     )
     args = parser.parse_args(argv[1:])
 
@@ -877,7 +908,7 @@ def main(argv: list[str]) -> int:
 
     for provider in chosen:
         print(f"===== {provider.id}  ({provider.label})")
-        failures, rows, document = verify_one(provider, wanted)
+        failures, rows, document = verify_one(provider, wanted, as_shipped=args.as_shipped)
         documents[provider.id] = document
         print("\n".join(rows))
         print(f"{len(failures)} failure(s) in {provider.id}\n")
