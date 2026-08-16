@@ -1,6 +1,16 @@
 # How the models were judged
 
-> ## CONCLUDED. This is a record of an evaluation that finished, not an open one.
+> ## ONE EVALUATION FINISHED AND A SECOND IS OPEN. §0 to §10 are the finished one; §11 is the open one.
+>
+> **FLUX 2 Pro ships, and a second challenger is now on disk.** `gpt-image-2` was generated against
+> the same 56 assets, on the byte-identical recorded prompts, in the same `literal` dialect, and
+> `candidates/gpt-image-2/` is present with its own manifest. **§11 is that trial**, written to the
+> criteria below rather than to new ones — which is the whole reason the criteria were fixed in
+> advance and are left in the tense they were written in. Nothing in §0 to §10 has been re-scored,
+> re-weighted or reopened to accommodate a second challenger's strengths.
+>
+> **The verdict in §11 is split by kind rather than given as a winner**, because that is what the
+> measurements say and a single-winner sentence would have to suppress half of them.
 >
 > **FLUX 2 Pro ships.** The Qwen-Image 2512 challenger was generated in full across all three asset
 > repositories, measured against every criterion below, and lost on criterion 1 by margins nothing
@@ -11,8 +21,10 @@
 > two registry entries have been deleted** — as have the sibling repositories'.
 >
 > **Read every challenger figure below as history that was taken, not as something you can
-> re-derive.** `compare.py` reads manifests and there is one manifest left, so it cannot print those
-> columns again; the last run it did print is transcribed into §10. Where a figure used to point at
+> re-derive.** `compare.py` reads manifests and no Qwen manifest is left, so it cannot print those
+> columns again for that challenger — the second manifest now on disk is `gpt-image-2`'s and it
+> measures a different model. The last run it printed for Qwen is transcribed into §10 and must be
+> read as history. Where a figure used to point at
 > `candidates/qwen-image-2512/DEPLOYMENT.json`, that file is gone and what it recorded is in §10.6.
 > Deleting the images must not delete the reason the estate chose what it chose.
 >
@@ -28,10 +40,15 @@
 > `check_parity` — is kept whole because the estate has a stated 3D and animation gap FLUX cannot
 > fill and a next challenger is a question of when rather than if.
 >
-> **And one consequence that is easy to miss.** `check_parity` compared sets to each other and there
-> is one set now, so it is DORMANT: it returns clean because it was handed one document, not because
-> it looked and found nothing. `verify.py` prints that word on every run instead of a zero, and
-> `verify.py --self-test` proves on every CI run that it still fails when given something to fail on.
+> **And one consequence that is easy to miss, now reversed.** While there was one set on disk
+> `check_parity` was DORMANT — it returned clean because it had been handed one document, not because
+> it looked and found nothing, and `verify.py` printed that word on every run instead of a
+> reassuring zero. **It is LIVE again.** Two manifests are present, so it compares real recorded
+> prompts against each other and reports `prompt parity across 2 sets: 0 disagreement(s)`. The word
+> DORMANT is still in the code and still printed, because dormancy is a property of the SELECTION
+> and not of the estate: `verify.py --provider gpt-image-2` reads one manifest and says so, and the
+> line now also names how many sets are on disk that the run did not read. `verify.py --self-test`
+> proves on every CI run that the check still fails when given something to fail on.
 
 The criteria were written **before** the challenger sets existed, which is the only time criteria
 can be written honestly. Once the images are on screen it is very easy to discover that the thing
@@ -687,3 +704,547 @@ ran on dedicated hardware at roughly 11 seconds an image and was idle for most o
 because a candidate can only be generated once the reference set whose prompts it replays is
 complete. That is a fact about how the comparison had to be sequenced, not about the model — which
 is exactly why a per-hour provider must never be handed a per-image figure.
+
+---
+
+## 11. The second challenger: gpt-image-2, on the same 56 assets
+
+Written after §0 to §10 and scored against them unchanged. Nothing below reopens a criterion,
+reweights one or adds one, because the entire value of having fixed them in advance is spent the
+first time a result is allowed to edit the rubric.
+
+**The short version, and it is not a single winner.** gpt-image-2 wins criterion 1's *measurable*
+half and criterion 2 outright, by margins that are not close. It loses criterion 1's unmeasurable
+half — **is it the idea?** — on the kind the brand is actually built on, and that is the criterion
+§1 says no measurement will speak for. Read §11.5 before quoting a row out of §11.4.
+
+### 11.1 What was run, and what it cost to find out
+
+| | |
+| --- | --- |
+| model | `gpt-image-2`, OpenAI, served by Azure AI Foundry (AIServices S0, Sweden Central) |
+| adapter | `openai-images` in `backends.ts` |
+| dialect | `literal` — the identity transform, so every prompt is the reference record replayed byte for byte |
+| concurrency | **1**, measured and not chosen for caution: two back-to-back requests returned `429 RateLimitReached, "Please retry after 32 seconds"` |
+| set | `candidates/gpt-image-2/`, its own `MANIFEST.json`, its own `native/` |
+
+`verify.py --parity` reports **0 disagreements across 2 sets**, which is the precondition for
+everything below: the two models answered the same question, character for character, and any
+difference in the output is the model's.
+
+**Two of the five kinds could not be generated at their declared size, and were not upscaled.** This
+deployment enforces a minimum pixel budget that no documentation states, so it was bisected:
+1024x512 (524,288 px) is refused and 1024x640 (655,360 px) is accepted, putting the floor in
+(524288, 655360]. The 1024x384 wordmark (393,216 px) and the 512x512 favicon (262,144 px) both fall
+under it. They are generated at an exact integer multiple — 1536x576 and 1024x1024, both on the
+required 16-grid, both measured — and **Lanczos-downscaled** to the declared size, with the
+as-delivered native kept at `candidates/gpt-image-2/native/` and recorded on the entry in four
+columns (`nativePath`, `nativeSize`, `nativeSha256`, `nativeC2pa`). `verify.py`'s `check_native`
+fails any entry whose native is *smaller* than its declared size, so the one thing this arrangement
+could have been used to hide — an upscale reported as a generation — is the one thing it is checked
+for on every run.
+
+**Billing is in a third unit.** `usage.output_tokens`, per image, varying with size and quality:
+91 at 1280x640 low, 7,024 at 1024x1024 high. It is per-image accounting like FLUX's cost units, so
+`compare.py` takes the per-image path — but an output image token and a provider image unit are not
+convertible without two price lists this repository does not hold, and §6's rule stands unchanged:
+report each figure in its own unit, never add them, and take the money question to the invoices.
+`compare.py` now branches on `billing.basis` rather than on `billing.unit`, because a third unit is
+exactly the thing a unit-string branch breaks on.
+
+### 11.2 The confound in the ground comparison, restated because it now cuts the other way
+
+§7.0 already says the reference set has been post-processed and a candidate set has not. Against
+Qwen that confound *flattered* the reference. Against this challenger it does the opposite, and the
+honest thing is to say so with the same emphasis.
+
+**54 of the reference set's 56 generated files have a perfectly flat `#12100f` border** — one unique
+colour, standard deviation 0.00 — because `normalise_ground.py` snapped them after generation
+(commit `8314af3`). The two exceptions are `currency-ember/mark` and `currency-spark/mark`,
+generated after the last normalisation run and never put through it. **Those two are the only
+apples-to-apples ground comparison this repository can offer**, and on them gpt-image-2's raw ground
+is closer to specification than FLUX's raw ground was.
+
+gpt-image-2's grounds as delivered are `#0b0908` to `#0c0a0a`, with faint vertical banding — 83 to
+88 unique colours in a 24-pixel border band, standard deviation about 0.0012 in luma. Against the
+`#12100f` target that is **too dark**, by a consistent amount, on every asset. So the finding is a
+**bias, not a spread**, and §2 says in as many words which of those two matters: a bias is uniform,
+correctable and invisible once the set is seen together; a spread is no house style at all.
+
+**And the two-file apples-to-apples comparison goes decisively the challenger's way.** Measured on
+the same 24-pixel border band, the two never-normalised reference marks are:
+
+| | ground, as delivered | unique colours in the band |
+| --- | --- | --- |
+| target | `#12100f` | 1 |
+| `currency-ember/mark`, FLUX raw | `#343235` | 214 |
+| `currency-spark/mark`, FLUX raw | `#31302e` | 232 |
+| `currency-ember/mark`, gpt-image-2 raw | `#0b0908` | 88 |
+| `currency-spark/mark`, gpt-image-2 raw | `#0a0909` | 84 |
+
+`#343235` is mid-charcoal. It is the defect §1 names first — "the first live image of the original
+FLUX run came back on a mid-grey taupe field; this is not hypothetical" — surviving in the shipped
+set on the only two files the post-process never reached, and it is plainly visible when the two
+`currency-ember` marks are put beside each other. gpt-image-2 misses the target in the other
+direction by roughly a fifth of that distance. **On raw delivery, the challenger holds the brand
+ground and the reference does not.**
+
+**The candidate was deliberately NOT normalised.** Two reasons, and the second is the one that
+matters: a candidate set that has been through the reference set's post-process is no longer a
+measurement of the model, and it would destroy the C2PA boxes that are §11.4's most decisive row.
+
+**And a hazard that came out of looking at this.** `normalise_ground.py` hardcodes `Path("assets")`
+and takes no `--provider`. Running it today, for any reason, would rewrite **the shipped set** —
+including the two currency marks that have never been through it, which are the only unnormalised
+reference files left and carry the only two C2PA boxes in the repository. It is recorded here rather
+than fixed silently because the fix is a signature change to a script the reference set's provenance
+depends on, and README §8 names it as something a promotion must not acquire.
+
+### 11.3 What was looked at, by eye — and the distinction it turned on
+
+The measurements are in §11.4. This is criterion 1's other half — *is it the idea?* — and it needs
+one distinction stated before any of it makes sense, because the first pass of this review got it
+wrong and wrote the opposite conclusion down.
+
+**gpt-image-2 answers the WORDS of `plan.ts`. FLUX answers what the words are FOR.** On asset after
+asset the challenger is the more literally compliant of the two and the reference is the one whose
+output a person would recognise. Both readings are defensible and they are not the same criterion,
+so both are recorded rather than averaged.
+
+- **`currency-ember/mark` — the clearest case, and it goes against first impressions.** `plan.ts`
+  asks for "one perfect circle drawn as a single uniform-weight outline, and held centred inside
+  that circle one **solid** ember flame — **a teardrop with its point at the top and its base
+  flat**", with a short bar below, clear of the circle. gpt-image-2 draws exactly that sentence: a
+  clean uniform ring, a solid teardrop with a pointed top and a flat base, a bone bar below and
+  clear. FLUX draws a *prettier* flame with an inner negative-space cut-out and a rounded bottom —
+  which is **not solid** and **not flat-based**, and is therefore not what the brief says. The first
+  pass of this review recorded gpt-image-2's as "a water droplet on a currency called EMBER". That
+  criticism is of the plan's own words, not of the model that followed them. What is true is
+  narrower and still worth saying: FLUX's reads as *fire* at a glance and gpt-image-2's reads as a
+  *droplet*, and for a currency glyph the glance is what it is for.
+- **`site/mark` — the same split, with the challenger losing it.** The idea is "one flat baseline
+  with a single shallow arc rising from it, like the face of an anvil seen from the front — and one
+  **solid** ember flame rising above the centre of that arc. Two elements only." gpt-image-2's
+  baseline-with-a-shallow-arc is the more accurate reading — FLUX drew a heavy filled semicircular
+  dome on a separate base bar, which is three elements and not shallow — and its flame is genuinely
+  solid where FLUX's is not. But the solid form it drew is **a chamfered octagonal blob with a
+  single notch**. It reads as a shield or a gem. Here the referent is the whole asset, it is the
+  company's own mark, and losing it is not offset by the arc being more correct.
+- **`network/mark` — the challenger wins this one outright.** The idea is an outlined teardrop flame
+  with a smaller solid flame nested inside, standing on a short bar. Both models draw it. FLUX's
+  outer flame meets its plinth in a notched, asymmetric joint and its stroke weight visibly varies;
+  gpt-image-2's is symmetric, of one weight throughout, and its accent measures 0.7 degrees off the
+  registry hex against FLUX's 7.4. FLUX keeps one detail the challenger drops — the bar "broken by a
+  short gap at each end", which gpt-image-2 puts in the middle instead.
+- **`site/favicon` — the challenger wins this one too, and it is the one that complicates
+  everything.** gpt-image-2 returns a genuine flame, with the inner negative-space notch, sitting on
+  a bowed anvil, drawn entirely in the registry accent: one colour, no second hue, which is what the
+  brief asks for in those words. FLUX draws its arch in bone — permitted, since the ground line may
+  be `#b7ae9b` — but the result is a two-colour mark whose heavier element is the one that is not
+  the accent, and its measured accent coverage suffers for it.
+- **`site/wordmark`** — both spell "CloudsForge" correctly, with the medial capital `F`. That is
+  worth recording, because §5 already flags wide lettered compositions as this brief's weak point
+  and predicted the challenger would fail there. It did not. FLUX sets the name in a rounded
+  geometric sans beside a proper flame-and-arch lockup; gpt-image-2 sets it in a squared techno face
+  with wide, slightly uneven tracking, beside a thin spiky flame over a very shallow arc. The
+  challenger's lettering is physically *sharper* — it is a Lanczos downscale from a 1536-wide native
+  — and its typeface is further from the estate's own.
+- **`site/og`** — the same lockup on a wide field, and neither model invented text on it. The
+  challenger's mark is disjoint: the flame floats clear of the arc rather than standing on it.
+
+**The one finding that belongs to criterion 2 rather than to criterion 1.** gpt-image-2's
+`site/favicon` and `site/mark` **are not the same drawing**. They are supposed to be one idea at two
+sizes; one is a proper flame on an anvil and the other is an octagonal blob on a bridge. FLUX's two
+differ in colour and weight and remain recognisably siblings. So the challenger's *colour* coherence
+is excellent — §11.4's spread rows are not close — and its *idea* coherence is not. That is why the
+numbers and the prose in this section point in opposite directions, and why neither is allowed to
+stand in for the other.
+
+
+### 11.4 What `compare.py` measured, over all 98 assets
+
+Unlike §10, **this table is live**. Both sets are on disk, both manifests are complete, and
+`python3 compare.py` reprints every figure below on demand. Nothing here is transcribed from a run
+that can no longer be repeated.
+
+Both columns are the `literal` dialect and `verify.py --parity` reports 0 disagreements across
+them, so every row is a like-for-like comparison on identical input — with one exception, called
+out where it appears and already argued in §11.2.
+
+#### Prompt adherence
+
+| | FLUX 2 Pro | gpt-image-2 |
+| --- | ---: | ---: |
+| entries in the set | 98 | 98 |
+| generated (rest are derived) | 56 | 56 |
+| ground off-target (>0.12 luma) | 0 | 0 |
+| median ground luma | 0.0053 | 0.0031 |
+| below the accent floor | 0 | 1 |
+| a third hue dominating the mark | 0 | 0 |
+| delivered size != declared | 0 | 0 |
+
+**The single failure is named rather than aggregated: `hub/social`.** It is one asset out of 56 and
+it is the same defect that cost the previous challenger the comparison 27 times over, so it is
+recorded at full weight rather than rounded to "essentially zero". The ground-luma row is the
+confound of §11.2 and is not a like-for-like model measurement in either direction.
+
+#### Style coherence within the set — spread, not average; lower is one hand
+
+| | FLUX 2 Pro | gpt-image-2 |
+| --- | ---: | ---: |
+| accent lightness: bias | +0.063 | −0.023 |
+| accent lightness: SPREAD | 0.108 | **0.049** |
+| accent hue error: mean degrees | 8.4 | **2.6** |
+| accent hue error: SPREAD | 6.9 | **2.7** |
+| ink coverage spread (within kind) | 0.0233 | 0.0238 |
+| ground luma spread | 0.0050 | 0.0006 |
+| KB per megapixel (median) | 122 | 245 |
+
+**This is the table the challenger wins, and it wins it by a distance.** §2 fixed in advance that
+this criterion is judged on *spread* rather than on average, on the argument that a set drawn by one
+hand is one whose deviations are consistent. gpt-image-2's accent hue lands 2.6 degrees from the
+registry hex on average against the reference's 8.4, and — the row that matters more — the spread of
+that error is 2.7 against 6.9. Its accent lightness spread is 0.049 against 0.108. On the terms
+§2 set for itself, before either set existed, that is not close.
+
+**KB per megapixel doubles, and §2 says a large gap here means the two models answered in different
+registers.** 122 against 245 is a factor of two, not the factor of 6.8 that convicted Qwen of
+photographic rendering, and the by-eye tally in §11.3 and `artefacts.json` finds no bevels,
+gradients, glows or three-dimensional forms to explain it. What explains it is measurable: the
+challenger's grounds carry faint banding — 82 to 125 unique colours in the border band of the twelve
+marks, median 101 — where the reference's shipped grounds hold exactly one. **That is the §11.2
+confound again and it is doing all the work in this row**: the only two reference files the
+normaliser never reached hold 214 and 232. Raw against raw the challenger's ground is about twice as
+flat, and this row would invert if either set were compared in the state the model actually
+delivered it in.
+
+#### Legibility at the size the asset is used at
+
+| | FLUX 2 Pro | gpt-image-2 |
+| --- | ---: | ---: |
+| median contrast retained at 32px | 83% | **90%** |
+| median contrast retained at 16px | 53% | **67%** |
+| marks under 50% at 16px | 11 | **7** |
+
+**The second challenger in a row to beat the reference here, by a wider margin than the first.**
+§10.3 recorded Qwen at 63% against 53% at 16px and called it a win the verdict did not turn on;
+gpt-image-2 reaches 67% and puts four fewer marks under the half-way line. Some of that is
+mechanical and is stated rather than claimed as artistry: the 14 favicons are Lanczos downscales
+from a 1024x1024 native (§11.1), and a downscale from a larger original keeps more contrast than a
+native small render. The 32px and 16px figures for the marks, which are generated at their declared
+1024x1024 in both sets, carry no such advantage.
+
+Both sets' weak marks are named by the tool rather than summarised:
+
+- FLUX 2 Pro: `foresight/mark` 38%, `hub/mark` 41%, `admin/mark` 44%, `hub/favicon` 45%,
+  `developers/mark` 47%, `foresight/favicon` 49%.
+- gpt-image-2: `foresight/mark` 31%, `trade/favicon` 34%, `trade/mark` 39%,
+  `currency-spark/mark` 40%, `lantern/mark` 46%, `market/mark` 49%.
+
+**`foresight/mark` is the worst mark in both sets**, which is a finding about the *idea* — a thin
+line, a small node and three dashes — rather than about either model, and it is the strongest
+argument in this document that some of what `compare.py` attributes to a model belongs to `plan.ts`.
+
+#### Artefact rate, tallied by eye
+
+Same twelve marks and same nine wordmarks as §10.4, scored off the sheets `compare.py` rebuilt for
+this run. The full reasoning per row, including two rows that were nearly scored the other way, is
+in `review/compare/artefacts.json`.
+
+| | FLUX 2 Pro | gpt-image-2 |
+| --- | ---: | ---: |
+| accent absent or wrong hue | 0 | 0 |
+| construction guides drawn | 0 | 0 |
+| frame / border / bounding box | 0 | 0 |
+| ground not the brand near-black | 0 | 0 |
+| idea not recognisable from `plan.ts` | 0 | **1** |
+| inset duplicate of the mark | 0 | 0 |
+| lettering: name misspelt or invented | **1** | 0 |
+| non-flat rendering (3D, bevel, gradient, glow) | 0 | 0 |
+
+**Two almost-clean columns tripping one row each, and different rows — which makes this the least
+useful table in §11, and saying so is the point of keeping it.** The taxonomy was fixed in §4 to
+catch what the previous challenger did, and gpt-image-2 does none of it: no guides, no frames, no
+bevels, no pale grounds, no missing accents, and all nine names spelled correctly including `hub`,
+where the reference invented "Home on the Ridge" out of its own idea text. The one row it trips is
+`site/mark`, and the rubric has no way to record that this is the company's own primary mark rather
+than one twelfth of a rate. **A rubric that catches the last model's failures is not the same thing
+as a rubric that catches this one's**, and §11.5 is where that gap is answered.
+
+#### Retries, and provenance
+
+| | FLUX 2 Pro | gpt-image-2 |
+| --- | ---: | ---: |
+| assets needing at least one retry | 16 / 56 | **0 / 56** |
+| total retries | 26 | **0** |
+| failed attempts logged | 5 | **0** |
+| carries C2PA, measured off the bytes | 2 / 98 | **33 / 98** |
+
+**§5 and §10.5's caveat applies again and is weaker this time.** The reference's 26 retries were
+overwhelmingly `429 RateLimitReached` on a shared serverless endpoint. This challenger ran against a
+rate limit severe enough to force concurrency 1 (§11.1) and still logged zero retries and zero
+failed attempts across 56 generations — not because it was never throttled, but because serialising
+and sleeping meant it never was. The retry counter measures the *harness* as much as the model, and
+this row is a fair comparison of two harnesses rather than of two models.
+
+**The C2PA row is exact and worth reading precisely.** 33 of the 56 generations arrive carrying a
+C2PA box and 23 do not, and the 23 are not a sample: they are exactly the 14 favicons and 9
+wordmarks that had to be Lanczos-downscaled from a larger native (§11.1). Re-encoding a PNG through
+Pillow drops the box. **All 23 of those natives carry C2PA at `candidates/gpt-image-2/native/`**, so
+no provenance was lost by the derivation — it moved to the as-delivered file, which is where the
+manifest's `nativeC2pa` column says to look for it. Against the reference's 2 of 98, this is a
+sixteen-fold improvement in signed provenance, and it is the one row in §11 where the challenger's
+advantage is a property of the *vendor* rather than of the model.
+
+#### Cost, in the unit each model billed in
+
+These are **not the same number**, were never added, averaged or divided into each other, and
+`compare.py` refuses to derive a ratio between them.
+
+- **FLUX 2 Pro: 168 provider image units** over 56 generations, 3.00 per image, 42 derivatives free.
+- **gpt-image-2: 282,372 output image tokens** over 56 generations, 5,042.36 per image, 42
+  derivatives free.
+
+Both bill per image and they still do not compare, which is the case §6 anticipated in principle and
+this run produced in fact: an output image token and a provider image unit are convertible only
+through two price lists this repository does not hold and will not guess at. What *is* comparable is
+each provider against its own runs, and the useful figure for the next run is the second one:
+**5,042 output image tokens is the cost of one 1024x1024 image at `quality: "high"`**, against 91 for
+one 1280x640 at `low`. The quality parameter, not the pixel count, is what this endpoint charges
+for.
+
+### 11.5 Verdict: by kind, because there is no single winner
+
+**The recommendation is: do not promote gpt-image-2 to `assets/` today.** Keep it on disk as a
+candidate, keep the switch reversible, and read the rest of this section before treating that as a
+loss for the challenger, because on five of the eight tables above it is ahead.
+
+**What the challenger wins, and none of these are marginal.** Colour discipline is the clearest:
+2.6 degrees of accent hue error against 8.4, with the spread of that error at 2.7 against 6.9, on a
+criterion §2 fixed in advance as the one that decides whether a set looks like one hand. Legibility
+at the size the asset is used at: 67% retention at 16px against 53%, four fewer marks under the
+half-way line. Lettering: nine names of nine, against a reference that shipped "Home on the Ridge".
+Provenance: 33 signed files against 2. And literal compliance clause by clause — five valance
+strokes where the reference draws four scallops, a solid flat-based teardrop where the reference
+draws a prettier flame the brief does not describe, one accent and no second hue where the reference
+lights `worlds`' window in ember on a green mark.
+
+**What it loses is one thing, and the one thing is `site/mark`.** The company's own primary mark
+came back as a chamfered octagon with a notch, standing on a single bowed bar, and it reads as a
+shield or a gem rather than as a flame over an anvil face. Every measurement passes it. It is flat,
+it is one accent, the ground is right, it is legible at 16px, and it is arguably a *more* accurate
+reading of the sentence in `plan.ts` than the reference's. It is still not the mark. And its
+`site/favicon` sibling — which is a genuinely good flame, better than the reference's on colour —
+is not the same drawing, so the surface that every other surface is a family member of does not have
+a coherent identity in this set. **§1 said no measurement would speak for this criterion and then a
+run happened where nothing else disagreed with it.**
+
+By kind, on all 98:
+
+| kind | better set | why |
+| --- | --- | --- |
+| `mark` (14) | **split, reference on balance** | The challenger draws the written construction more accurately on `market`, `worlds`, `developers`, `trade`, `currency-spark` and `network`; the reference draws the thing the construction is *for*. `site/mark` decides it, because that one is not a tie-break, it is the mark. |
+| `favicon` (14) | **gpt-image-2** | Sharper by construction (Lanczos from a 1024 native), better colour, and the best single asset in either set is arguably its `site/favicon`. `trade/favicon` at 34% retention is its one weak one. |
+| `wordmark` (9) | **gpt-image-2 on correctness, reference on type** | Nine names right against eight. But the letterforms are a squared techno face with wide, uneven tracking, further from the estate's own type than the reference's rounded geometric sans, and the mark component is set noticeably small beside them. |
+| `og-source` (11) | **reference** | The challenger's lockups come apart on a wide field — `site/og`'s flame floats clear of the arc it should stand on — and a composition failure on a 1200x630 card is visible at full size, where a mark's failure has to be looked for. |
+| `social` (8) | **reference** | The one accent-floor failure in the entire run is `hub/social`, and social cards are the assets seen by people who have never seen the brand before. |
+| everything derived (42) | **neither** | 28 favicons, 11 `og` crops, 2 icons and 1 avatar, cut by `derive.py` from the generated file by identical code in both sets. Any difference here is inherited from its source and is not a measurement of the model. |
+
+**What would change the verdict, and it is cheap.** The challenger logged zero retries and zero
+failed attempts, so a targeted regeneration of `site/mark` — one image, roughly 5,000 output image
+tokens and under two minutes — is all that stands between this set and a genuine argument for
+promotion. `generate.ts` resumes from its own manifest and would re-bill nothing else. That was not
+done for this evaluation on purpose: **re-rolling the one asset that failed, and only that one,
+until it passes is how a comparison stops measuring a model and starts measuring the patience of the
+person running it.** The reference set's 26 retries were `429`s, not re-rolls for taste, and the
+challenger is entitled to the same rule.
+
+**The verdict is not only prose: `promote.py` refuses to make the switch.** It was run for real to
+prove the round trip, and the run found something no amount of reading would have. `verify.py`
+holds brand conformance fatal for the SHIPPED set and reported-not-fatal for a candidate — the split
+argued in §11.1's tooling and correct on its own terms — so `hub/social` at 0.32% accent was a
+`warn` line for this entire evaluation and became `FAIL hub social` one second after the tree
+landed on `assets/`. **A set can pass every gate as a candidate and turn the repository red by being
+promoted.** `verify.py --as-shipped` now asks the question a promotion actually cares about, and
+`promote.py` uses it as the pre-move gate, so the switch is refused today with the failing asset
+named. The verdict above and the tooling now agree, and they agree because the tooling was corrected
+rather than because the verdict was.
+
+**Two defects in the switch itself, both found by running it and both fixed on this branch.** The
+first: the collision check asked `dst.exists()` over every planned move, and the winner's
+destinations are `assets/` and `MANIFEST.json` at the root — occupied by the outgoing reference
+until the first two moves carry it away. **No promotion could ever have succeeded**, and nobody
+knew, because the completeness gate upstream of it failed first for the whole life of the branch
+(`site/avatar@1024x1024` had no derivation recipe until `derive.py` was given one). It now walks the
+plan in order and treats a path as free once an earlier move vacates it. The second is cosmetic and
+recorded anyway: the emptied `candidates/<winner>/` was left behind, which reads as "there is a set
+here" to everyone except the registry. **The round trip was then run twice and `assets/` and
+`MANIFEST.json` came back byte-identical both times** — one sha256 over the whole tree, taken
+before and after — which is the property the brief's "the old artwork must remain byte-identical"
+depends on and the only one worth proving by execution.
+
+**And one honest limit on all of the above.** This is one run of 56 images at one setting
+(`quality: "high"`), on one brief, judged against a set that has had a post-process the candidate
+has not (§11.2), by one pair of eyes that got `currency-ember` backwards on the first pass and had
+to write the correction into §11.3. The measurements are reproducible on demand and the by-eye
+scoring is not. Where the two disagree — and in this section they disagree more than in any other —
+the tables are what can be checked and the prose is what has to be argued with.
+
+## 12. The repair run, and the promotion §11.5 argued against
+
+§11.5 recommended against promoting gpt-image-2, named exactly what would change its mind, and then
+said the change was not going to be attempted:
+
+> a targeted regeneration of `site/mark` — one image, roughly 5,000 output image tokens and under
+> two minutes — is all that stands between this set and a genuine argument for promotion. That was
+> not done for this evaluation on purpose: **re-rolling the one asset that failed, and only that
+> one, until it passes is how a comparison stops measuring a model and starts measuring the patience
+> of the person running it.**
+
+**It has now been done, deliberately and as a separate act from the evaluation**, which is why it is
+a new section rather than an edit to §11. §11 is the comparison and it still says what it said. This
+section is the repair, and it reverses §11.5's recommendation.
+
+### 12.1 What was actually done to the candidate, in full
+
+Two things, and only the first is a re-roll.
+
+**Two assets were regenerated. Not thirty-seven, not the whole set.**
+
+| asset | draws | why it stopped there |
+| --- | ---: | --- |
+| `site/mark@1024x1024` | 1 | Draw 2 came back a tapered flame curling over the bowed arc. §11.5's complaint — "a chamfered octagon with a notch … it reads as a shield or a gem" — does not describe it, so there was nothing left to re-roll for. |
+| `hub/social@1280x640` | 3 | Draws 2 and 3 both came back at **0.07%** and **0.10%** accent against a 0.5% floor, worse than draw 1's 0.32%. Draw 4 passes at **1.38%**. Four draws is where this stopped, and §12.3 is the part of that outcome worth arguing with. |
+
+Everything else that changed changed for one reason: **the candidate had never been ground-normalised
+at all**, and §11.2 spent a page explaining why the ground row could not be read as a model
+comparison because of it. It can be read now.
+
+- The reference measured 98 of 98 grounds at exactly `#12100f`. The candidate measured **0 of 98**,
+  with delivered grounds running `#090606` to `#0d0c0b` — every one of them *darker* than the ash
+  value, which is why `verify.py`'s luma **ceiling** passed all 98 and nothing complained for the
+  whole life of the branch.
+- The cost of not noticing would not have been subtle. `materialise.py` copies these files onto
+  seventeen web surfaces that set `--cf-bg` to `#12100f` in CSS, so every mark, favicon, OG card and
+  social banner in the estate would have sat in a visibly darker square on a page whose own
+  background is the value the artwork was supposed to be drawn on.
+- The repair is the repository's own tool and nothing else: `normalise_ground.py`, run once over the
+  candidate tree, 98 checksums re-recorded. The artwork is untouched — the script rewrites
+  near-ground pixels only.
+
+`brand/normalise_ground.py` is **not** the script of the same name in the three sibling repositories,
+and finding that out cost a full revert of the reference set. It takes no `--provider`, resolves
+`assets/` and `MANIFEST.json` relative to the **current working directory**, walks every png
+including derivatives, and is **not idempotent** — a second full pass over an already-normalised tree
+remapped a further 148 pixels and shrank `worlds/wordmark` from 32,252 to 30,707 bytes. Point it at a
+candidate with `cd candidates/<id> && python3 ../../normalise_ground.py`, run it once, and because it
+normalises derivatives in place the order here is **derive then normalise**, which is the opposite of
+the order the sibling repositories need.
+
+### 12.2 A defect the candidate gates could not see: a derivative cut from a mark that no longer exists
+
+Re-rolling `site/mark` and re-running `derive.py` left `site/org-avatar-1024x1024.png` **unchanged on
+disk** — still the avatar cut from the superseded octagon, still passing every check, still recorded
+in the manifest as current. `already_derived` compared the derivative to its own recorded checksum,
+found them equal, and kept it. Nothing in the set was in a position to notice, because the stale file
+was internally consistent; only its *source* had moved.
+
+`derive.py` now compares the source too, by time rather than by checksum: a derivative whose
+`generatedAt` predates its parent's is re-cut. Missing or unparseable timestamps answer "cannot prove
+it is stale" and keep the file, so the guard can only ever cause extra work, never silent loss. Both
+sets were re-derived after the fix: 42 entries each, **zero rewrites** beyond the one avatar, which
+is the result that says the guard is narrow.
+
+This would have shipped the company's GitHub organisation avatar as a mark the company had already
+rejected. It is the second finding in this run of the same shape as §11.5's `promote.py` discovery —
+**a candidate can pass every gate and still be wrong in a way only promotion or execution reveals** —
+and it is worth stating plainly that both were found by running things rather than by reading them.
+
+### 12.3 What the four draws of `hub/social` actually show, including the part that is not flattering
+
+The honest reading of draw 4 is not "the model got it right on the fourth try".
+
+All four draws put the Forge Hub ridge in **bone**, not in ember, with a small solid ember spark
+above the middle peak. Draws 1–3 failed the accent floor because a spark alone is not 0.5% of a
+1280×640 field. Draw 4 passes at 1.38% because its ridge and its type are drawn in a *warmer* bone —
+`#ede1d0` is the median of the pixels the check counted — not because the ridge became ember. **The
+gate went green on a colour decision the gate was not written to have an opinion about.**
+
+Whether that is a defect depends on which text is authoritative, and it is worth noticing that the
+model has the better claim. `plan.ts` says: *"the **ash** ridge drawn as one jagged skyline of four
+straight segments … with a single solid **ember** spark held centred in the empty space directly
+above its middle peak."* An ash-coloured ridge under an ember spark is that sentence. The reference's
+all-ember ridge is prettier and is not that sentence. The same reading holds across the kind: on the
+eight social cards and eleven OG cards the challenger draws each surface's mark in **its own registry
+accent** — amber for `create`, blue for `foresight`, violet for `market`, teal for `trade`, green for
+`worlds` — and `hub` is the one surface whose brief names a colour for the mark that is not its
+accent.
+
+So this section does not claim the challenger won `hub/social`. It records that the asset now clears
+the floor, that it clears it for a reason the floor does not measure, and that **anyone who wants the
+reference's reading should say so in `plan.ts`, where the disagreement actually lives, rather than in
+the accent floor.**
+
+### 12.4 What `compare.py` says now, against the same reference, on the same 98 assets
+
+Re-run in full after the two re-rolls and the normalisation. Winners in bold.
+
+| | FLUX 2 Pro | gpt-image-2 |
+| --- | ---: | ---: |
+| below the accent floor | **0** | **0** |
+| third hue dominating | **0** | **0** |
+| accent hue error: mean deg | 8.4 | **2.6** |
+| accent hue error: SPREAD | 6.9 | **2.6** |
+| accent lightness: SPREAD | 0.108 | **0.044** |
+| ink coverage spread (in-kind) | 0.0233 | **0.0227** |
+| ground luma spread | 0.0050 | **0.0000** |
+| median contrast retained at 32px | 83% | **90%** |
+| median contrast retained at 16px | 53% | **68%** |
+| marks under 50% at 16px | 11 | **7** |
+
+Two rows carry the weight.
+
+**The ground row is now a real comparison and it was not one before.** Both sets have had the same
+post-process from the same script; §11.2's confound is discharged rather than argued around.
+
+**The legibility rows are the reason this set promotes and its three siblings do not.** In
+`emberkin-assets` and `aetherholm-assets` the challenger's outline register costs it the 16px table
+outright — 13 marks under the half-way line against 9, and 37 against 8. Here the register goes the
+other way: the challenger's marks are *solid* and it is the reference that hollows out, 7 under the
+line against 11, with 15 points more contrast retained at the size a favicon is actually seen at.
+**The same model, the same setting, the same literal dialect, and the opposite result on the one
+criterion that decided all four repositories.** That is a fact about the briefs, not about the model,
+and it is the most useful thing this run found.
+
+### 12.5 Verdict: promote, and what promoting costs
+
+**gpt-image-2 is promoted to `assets/` and flux-2-pro is demoted to `candidates/flux-2-pro/`.**
+`verify.py --provider gpt-image-2 --as-shipped` reports **0 failures** with conformance and
+completeness held fatal, every measured criterion §2 fixed in advance now favours the challenger, and
+§11.5's single named blocker is a flame over an anvil face.
+
+**What is worse after the switch, stated here rather than left to be found.**
+
+1. **The wordmark type.** Nine names spelled correctly against the reference's eight, in a squared
+   techno face with wide, uneven tracking that is further from the estate's own type than the
+   reference's rounded geometric sans, with the mark component set noticeably small beside it. §11.5
+   scored this a split and nothing in the repair run changed it. It is the largest standing cost of
+   this promotion and it is a typography objection, not a measurement.
+2. **`hub/social`'s bone ridge**, per §12.3.
+3. **Six web repositories are carrying brand chrome that nothing compares.** `sync-chrome.py --dry-run`
+   against the *reference* set reports 23 files that would be replaced — favicons and marks in
+   `hub-web`, `lantern-web`, `site`, `status-web`, `web-template` and one more that have been stale
+   since before this trial began. The promotion does not cause that and does not fix it; the sync
+   does, and it is a separate act with a separate diff.
+
+**The switch is one variable and it is reversible in both directions.** `providers.json`'s
+`reference` names the shipped set; `promote.py` moves five lines of it and vacates the outgoing set
+into `candidates/flux-2-pro/` rather than deleting it; the round trip was executed twice during §11
+and `assets/` came back byte-identical both times under one sha256 over the whole tree.
+`python3 promote.py --provider flux-2-pro` puts it back, today or in a year.
+
+**And the limit that has not moved.** This is still one run at one setting on one brief, judged by
+one pair of eyes, and §11.5's admission stands: the tables are what can be checked and the prose is
+what has to be argued with. What §12 adds is that two of §11's tables were measuring a missing
+post-process rather than a model, and that the one asset §11.5 said would decide it was decided by
+looking at it.

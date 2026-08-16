@@ -62,11 +62,12 @@ import { join } from 'node:path'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 
-import { reportSizing } from '../studio/src/sizing.ts'
+import { reportSizing, type Dimensions } from '../studio/src/sizing.ts'
 import { GENERATED_LICENCE } from '../studio/src/assets.ts'
 
 import {
   backendFor,
+  measureC2pa,
   ImageBackendError,
   UnimplementedBackendError,
   type Attempt,
@@ -83,6 +84,22 @@ const run = promisify(execFile)
 const HERE = import.meta.dirname
 const PLAN_JSON = join(HERE, 'PLAN.json')
 const ENV_FILE = join(HERE, '..', 'studio', '.env.local')
+
+/**
+ * The deadline for one asset, INCLUDING the time it spends waiting out rate limits.
+ *
+ * It was 300 s, which is generous for the reference provider — that endpoint answers in seconds
+ * and has never approached it. It is not generous for a shared-quota provider: gpt-image-2 takes
+ * around 45 s to return a `quality: "high"` image and answers 429 with "please retry after 32
+ * seconds", so three rate limits and a generation is already past five minutes. Aborting there
+ * would cancel a request the moment it was finally being served, and every abort throws away an
+ * image that has been paid for.
+ *
+ * Fifteen minutes, for every provider, because the alternative is dispatching on the adapter here
+ * — which would put a fact about one endpoint in the file that is meant not to know about any.
+ * The reference provider never gets near it, so nothing about that run changes.
+ */
+const PER_ASSET_TIMEOUT_MS = 900_000
 
 /* ------------------------------------------------------------------ configuration */
 
@@ -217,6 +234,38 @@ export interface ManifestEntry {
   /** Every attempt made, including the ones that failed. Details are redacted by the service. */
   readonly attempts: readonly Attempt[]
   readonly note?: string
+
+  /* ---- the native columns. Absent on every entry whose endpoint could be asked for the declared
+   * size directly, which is all 94 of the reference set's and most of a candidate's.
+   *
+   * ## Why they are columns here rather than four more manifest ENTRIES
+   *
+   * The obvious shape is to record the as-delivered native the way `og-source` is recorded: its own
+   * entry, its own key, its own row. It cannot be, and the reason is worth writing down because it
+   * looks like an oversight from every direction except the one it comes from.
+   *
+   * `verify.py`'s `check_parity` fails any key a candidate holds that the reference does not — "no
+   * set can hold an asset the reference has never generated" — because every dialect is a pure
+   * function of the reference record and an extra key means something generated a prompt of its
+   * own. That check is the strongest guarantee in this repository and it is right. A
+   * `site/wordmark-native@1536x576` row would break it for a reason that has nothing to do with
+   * prompts, and the only ways to keep both would be to special-case the parity check or to widen
+   * it. Neither is acceptable: the whole point of it is that it cannot be talked round.
+   *
+   * So the native is not an asset. It is a PROPERTY of the asset that was cut from it, recorded on
+   * that asset's row, stored outside `assets/` at `native/<surface>/<file>` — which is also outside
+   * the reach of `verify.py`'s orphan-PNG walk, by the same construction README §1 already
+   * documents for `social/`. `verify.py` checks these four columns against the bytes they name, so
+   * the native is measured rather than merely mentioned.
+   */
+
+  /** Provider-root-relative, e.g. `native/site/wordmark-1536x576.png`. Never under `assets/`. */
+  readonly nativePath?: string
+  /** What was actually asked for and delivered, before the downscale. */
+  readonly nativeSize?: string
+  readonly nativeSha256?: string
+  /** Measured on the native's bytes. The derivative loses the chunk; the native is where it lives. */
+  readonly nativeC2pa?: boolean
 }
 
 type Manifest = Record<string, ManifestEntry>
@@ -265,6 +314,82 @@ async function writeManifest(provider: Provider, manifest: Manifest): Promise<vo
 
 const sha256 = (bytes: Buffer): string => createHash('sha256').update(bytes).digest('hex')
 
+/**
+ * A delivered image whose dimensions are its request's transpose.
+ *
+ * ## This class is here because the repository already claimed it was, and it was not
+ *
+ * `parity.test.ts` states, in the header that justifies deleting the two Qwen envelope tests, that
+ * "`generate.ts`'s `TransposedDeliveryError` still refuses to keep a rotated file for ANY
+ * provider", and `providers.json` said the same thing in prose. Neither was true here. The class
+ * existed in exactly one of the four asset repositories — micro-tessera-assets — and this one
+ * measured the delivery with `reportSizing`, recorded `sizing: "unsized"`, and KEPT the file. So
+ * the guarantee two documents asserted was, in this repository, a row in a manifest that nobody
+ * reads until a contact sheet looks wrong.
+ *
+ * It is ported rather than the claim deleted, because the claim is the right one. A transposed
+ * delivery is not a transient fault and must not be written to disk and recorded as if it were the
+ * asset: every wordmark, OG card and social banner in this estate is non-square, which is exactly
+ * the population one vendor's `size` bug silently rotated while every log line looked correct.
+ *
+ * **Measured against what the BACKEND asked for, not against what the asset declares.** Those are
+ * the same number for the reference provider and for most of a candidate's set, and they differ
+ * wherever an endpoint refuses the declared size and the backend had to ask for a larger native —
+ * `GenerationResult.nativeRequest` is how it says so. Comparing bytes to the declared size instead
+ * would make this fire on every wordmark of such a set until somebody switched it off, which is the
+ * mechanism by which a real rotation gets through.
+ *
+ * **Do not post-rotate the bytes.** That is a second lossy pass on artwork the model composed for
+ * the frame it thought it had. Correct it in that provider's own envelope in `backends.ts` and
+ * leave this measurement in place to prove the correction works.
+ */
+export class TransposedDeliveryError extends Error {
+  constructor(key: string, wanted: string, got: string) {
+    super(
+      `${key}: asked for ${wanted} and the bytes measure ${got}, which is its transpose. This ` +
+        'provider is delivering rotated images and its response JSON will not say so. Do not ' +
+        'post-rotate the bytes — that is a second lossy pass on artwork the model composed for ' +
+        "the frame it thought it had. Correct it in that provider's own envelope in backends.ts, " +
+        'and leave this measurement in place to prove the correction works.',
+    )
+    this.name = 'TransposedDeliveryError'
+  }
+}
+
+/**
+ * Lanczos-downscale one file to one size, in Pillow, and report what the result actually is.
+ *
+ * ## Why this shells out instead of resampling in TypeScript
+ *
+ * `studio/src/sizing.ts` MEASURES and deliberately does not resample: doing it in pure TypeScript
+ * means a zlib-aware PNG decoder, a filter reconstructor, a resampler and an encoder, and doing it
+ * with `sharp` means a native dependency in a repository that has none. That decision is unchanged
+ * and correct. The pixels are moved by the same Pillow that already cuts the OG card and resamples
+ * the favicons, invoked through the same `derive.py` — not macOS `sips`, which design-system.md §7
+ * item 3 names as the reason the estate's post-processing stage exists on exactly one laptop.
+ *
+ * ## Why this is not "silently upscaling and calling it generated"
+ *
+ * It is the opposite operation. The model generated a LARGER image than the asset declares, because
+ * the endpoint refused the declared size, and this cuts it down — the same direction, and the same
+ * argument, as the OG card being asked for at 1200x640 and cropped to 1200x630. No pixel is
+ * invented. The as-delivered native is kept beside the set, its checksum and C2PA state are
+ * recorded on the entry, and `verify.py` re-measures both.
+ */
+async function resample(source: string, target: string, size: Dimensions): Promise<{
+  sha256: string
+  byteSize: number
+  c2pa: boolean
+  size: string
+}> {
+  const { stdout } = await run(
+    'python3',
+    [join(HERE, 'derive.py'), '--resample', source, target, `${size.width}x${size.height}`],
+    { maxBuffer: 8 * 1024 * 1024 },
+  )
+  return JSON.parse(stdout) as { sha256: string; byteSize: number; c2pa: boolean; size: string }
+}
+
 interface GeneratedOne {
   readonly entry: ManifestEntry
   readonly retriedTransient: number
@@ -299,16 +424,76 @@ async function generateOne(
 
   for (let go = 0; go <= MAX_TRANSIENT; go += 1) {
     try {
-      const result = await backend.generate(request, AbortSignal.timeout(300_000))
+      const result = await backend.generate(request, AbortSignal.timeout(PER_ASSET_TIMEOUT_MS))
       allAttempts.push(...result.attempts)
+
+      // What the BACKEND asked for, which is what the bytes have to be measured against. Equal to
+      // `identity.requested` for every provider that can be asked for the declared size directly;
+      // larger where an endpoint has a minimum this asset falls under. See `nativeRequest`.
+      const asked = result.nativeRequest ?? identity.requested
+      const sizing = reportSizing(result.bytes, asked, 'png')
+      const delivered = sizing.actual ? `${sizing.actual.width}x${sizing.actual.height}` : 'unknown'
+
+      // MEASURED, BEFORE THE FILE IS KEPT. A transposed delivery is not a transient fault and must
+      // not be written to disk and recorded as though it were the asset.
+      if (
+        sizing.actual &&
+        asked.width !== asked.height &&
+        sizing.actual.width === asked.height &&
+        sizing.actual.height === asked.width
+      ) {
+        throw new TransposedDeliveryError(identity.key, `${asked.width}x${asked.height}`, delivered)
+      }
+
       const dir = join(assetsDirOf(provider), surface.key)
       await mkdir(dir, { recursive: true })
       const path = join(dir, identity.fileName)
-      await writeFile(path, result.bytes)
-
-      const sizing = reportSizing(result.bytes, identity.requested, 'png')
-      const delivered = sizing.actual ? `${sizing.actual.width}x${sizing.actual.height}` : 'unknown'
       const isSource = !identity.onGrid
+
+      // ---- the native path: generated larger than declared because the endpoint refused the
+      // declared size, then cut down. Nothing is upscaled and nothing is invented; the native is
+      // kept, because it is the file that still carries the C2PA chunk — the same reason the
+      // as-delivered OG card is kept beside its crop.
+      let native: {
+        nativePath: string
+        nativeSize: string
+        nativeSha256: string
+        nativeC2pa: boolean
+      } | null = null
+      let bytesOnDisk = result.bytes
+
+      if (result.nativeRequest) {
+        const nativeDir = join(provider.root, 'native', surface.key)
+        await mkdir(nativeDir, { recursive: true })
+        const nativeName =
+          `${identity.recordedKind}-${result.nativeRequest.width}x${result.nativeRequest.height}` +
+          '-asdelivered.png'
+        const nativeFile = join(nativeDir, nativeName)
+        await writeFile(nativeFile, result.bytes)
+
+        const cut = await resample(nativeFile, path, {
+          width: identity.requested.width,
+          height: identity.requested.height,
+        })
+        bytesOnDisk = await readFile(path)
+        if (cut.size !== `${identity.requested.width}x${identity.requested.height}`) {
+          throw new Error(
+            `${identity.key}: the downscale produced ${cut.size} rather than the requested ` +
+              `${identity.requested.width}x${identity.requested.height}. Pillow reported a size ` +
+              'this run did not ask for, so the file is not the asset and must not be recorded.',
+          )
+        }
+        native = {
+          nativePath: `native/${surface.key}/${nativeName}`,
+          nativeSize: delivered,
+          nativeSha256: sha256(result.bytes),
+          nativeC2pa: result.c2pa,
+        }
+      } else {
+        await writeFile(path, result.bytes)
+      }
+
+      const onDisk = reportSizing(bytesOnDisk, identity.requested, 'png')
 
       return {
         retriedTransient: transient,
@@ -321,24 +506,36 @@ async function generateOne(
           accent: surface.accent,
           declaredSize: identity.declaredSize,
           requestedSize: `${identity.requested.width}x${identity.requested.height}`,
-          deliveredSize: delivered,
-          sizing: sizing.sizing,
+          // The bytes on disk, always — which is the native delivery where there was no downscale
+          // and the cut-down file where there was. `nativeSize` below is what the model returned.
+          deliveredSize: onDisk.actual
+            ? `${onDisk.actual.width}x${onDisk.actual.height}`
+            : delivered,
+          sizing: onDisk.sizing,
           cropped: false,
+          // Null even on the native path, deliberately. `derivedFrom` names another ASSET this file
+          // was cut from, and compare.py counts the entries without one as this set's generations.
+          // A native is not another asset — it is the raw delivery of THIS one, which is why it has
+          // no manifest key of its own — so filling this in would report 54 generations for a set
+          // that paid for 56, and would drop the same two assets out of compare.py's unsized count.
           derivedFrom: null,
           backend: result.backend,
           model: result.model,
           prompt,
           seed: result.seed,
-          sha256: sha256(result.bytes),
-          byteSize: result.bytes.length,
+          sha256: native ? sha256(bytesOnDisk) : sha256(result.bytes),
+          byteSize: bytesOnDisk.length,
           generatedAt: new Date().toISOString(),
-          // Measured, never asserted. The standing rule.
-          c2pa: result.c2pa,
+          // Measured, never asserted. The standing rule — and on the native path it is measured on
+          // the bytes that were WRITTEN, which have been re-encoded and have lost the C2PA chunk
+          // even though the delivery carried one. `nativeC2pa` records that the delivery did.
+          c2pa: native ? measureC2pa(bytesOnDisk) : result.c2pa,
           retries: previousRetries + transient,
           licence: GENERATED_LICENCE,
           providerCostUnits: result.providerCostUnits,
           providerOutputMegapixels: result.providerOutputMegapixels,
           attempts: allAttempts,
+          ...(native ?? {}),
           ...(isSource
             ? {
                 note:
@@ -349,6 +546,19 @@ async function generateOne(
                   'the provider emits one at all.',
               }
             : {}),
+          ...(native
+            ? {
+                note:
+                  `Generated at ${native.nativeSize} and Lanczos-downscaled to ` +
+                  `${identity.requested.width}x${identity.requested.height}. This endpoint ` +
+                  'refuses the declared size — it is below the deployment\'s minimum pixel budget ' +
+                  '— so the nearest exact multiple of the same aspect ratio was asked for and cut ' +
+                  'DOWN. No pixel was invented and nothing was upscaled. The as-delivered native ' +
+                  `is kept at ${native.nativePath}, outside assets/, because it is the file that ` +
+                  'still carries the C2PA chunk; re-encoding drops it and the invisible pixel ' +
+                  'watermark is unaffected.',
+              }
+            : {}),
         },
       }
     } catch (err) {
@@ -356,6 +566,9 @@ async function generateOne(
       // An unimplemented backend is wrong on every retry and wrong for every asset. Fail the whole
       // run at once rather than three times per asset across ninety-four assets.
       if (err instanceof UnimplementedBackendError) throw err
+      // A rotation is a property of the provider, not of this call. Retrying it three times buys
+      // three more rotated images at full price and then reports the same thing.
+      if (err instanceof TransposedDeliveryError) throw err
       if (err instanceof ImageBackendError) {
         allAttempts.push(...err.attempts)
         // A refusal or a credential problem is wrong the same way on every retry. The service
@@ -549,6 +762,10 @@ async function main(): Promise<void> {
           await writeManifest(provider, manifest)
         } catch (err) {
           if (err instanceof UnimplementedBackendError) throw err
+          // Stops the whole run, not just this asset. A provider that rotates one non-square
+          // delivery rotates all of them, and the remaining forty would each be paid for, measured,
+          // refused and logged — an hour and a set's worth of tokens to learn the same fact twice.
+          if (err instanceof TransposedDeliveryError) throw err
           failures += 1
           const message = err instanceof Error ? err.message : String(err)
           process.stdout.write(`  FAIL ${surface.key}/${kind}: ${message}\n`)

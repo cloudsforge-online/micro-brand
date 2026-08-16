@@ -66,6 +66,70 @@ ICON_STEP = 256
 # drift. Only these surfaces get an icon; the registry surfaces get favicons instead.
 ICON_SURFACES = ("currency-ember", "currency-spark")
 
+# ---- the org avatar: the one derivative that had no recipe, written down at last.
+#
+# WHY THIS IS HERE NOW, WHICH IS A STORY ABOUT A SECOND PROVIDER RATHER THAN ABOUT AN AVATAR.
+# `site/avatar@1024x1024` was cut BY HAND from the site mark before this file had a provider
+# argument, and parity.test.ts still calls it "a legitimate orphan" because it is in no plan. That
+# was harmless while there was one set: the file existed, its checksum was on record, and nothing
+# ever needed a second one. Then a candidate set was generated and came back 97 of 98 — complete on
+# every asset a machine knows how to make and one short on the only asset a person had made — and
+# `promote.py` correctly refused to switch to it. A derivative with no recipe is a set that can
+# never be promoted, and that is a much bigger defect than a missing avatar.
+#
+# So the hand operation is measured off the shipped file and written down as a function. It is
+# deliberately expressed as the RATIO the reference file exhibits rather than as the crop box that
+# produced it, because a crop box is a fact about one mark's composition and every model composes
+# differently: FLUX drew this mark's artwork 640px wide inside its 1024 frame and gpt-image-2 drew
+# it 694px wide, so the same crop box would give the two avatars visibly different weights.
+#
+# AND IT UPSCALES, WHICH IS SAID OUT LOUD RATHER THAN BURIED. Every other derivation in this file
+# goes DOWN — a centre crop invents no pixel and a Lanczos downscale of a 1024 beats asking a model
+# for a 256. This one goes up, by 1.18x on the reference file and 1.09x on the candidate, because
+# an avatar is a mark with its margins taken in and there is no larger source to take them in from.
+# It is recorded in the entry's `note`, it is `derivedFrom` a generated file rather than presented
+# as a generation, and no OTHER asset in this repository is produced this way. Generating an avatar
+# separately would break the relationship `derivedFrom` asserts — the avatar must be the same
+# drawing as the mark, not another draw of the same brief.
+AVATAR_SURFACE = "site"
+AVATAR_KIND = "avatar"
+AVATAR_SIZE = (1024, 1024)
+AVATAR_FILENAME = "org-avatar-1024x1024.png"
+# Measured on assets/site/org-avatar-1024x1024.png: the artwork spans 757px inside a 1024 frame,
+# with 133px of ground to its left and 134px to its right. 758/1024 is that width as a fraction,
+# and it is what the hand cut chose; nothing derives it from first principles.
+AVATAR_ARTWORK_FRACTION = 758 / 1024
+# Below this the crop is not worth doing. If a model already drew the mark filling the frame, the
+# avatar is the mark, and resizing 1024 to 1024 to move it 1% would be a re-encode for nothing.
+AVATAR_MIN_SCALE = 1.02
+
+
+def artwork_bbox(image: Image.Image) -> tuple[int, int, int, int]:
+    """The bounding box of everything that is not the ground, measured off the corner pixel.
+
+    The corner is the ground BY CONSTRUCTION here — every prompt in this set ends with a paragraph
+    demanding one flat unbroken field edge to edge, and `verify.py` fails any asset whose corners
+    say otherwise. So this reads the corner rather than assuming a hex, which matters for a
+    candidate set that has not been through `normalise_ground.py` and whose ground is its own
+    near-black rather than exactly #12100f.
+
+    The threshold is a sum over three channels, not a per-channel one, so a faint chromatic wash
+    does not register as artwork while a genuine accent stroke does at any hue.
+    """
+    rgb = image.convert("RGB")
+    ground = rgb.getpixel((0, 0))
+    assert isinstance(ground, tuple)
+    # Pillow's own difference-and-bbox is the fast path and gives the same answer as walking the
+    # pixels, which is what this did first and what it was checked against.
+    from PIL import ImageChops
+
+    flat = Image.new("RGB", rgb.size, ground)
+    difference = ImageChops.difference(rgb, flat).convert("L").point(lambda v: 255 if v > 20 else 0)
+    box = difference.getbbox()
+    if box is None:
+        raise ValueError("no artwork found: every pixel matches the corner, so there is nothing to centre")
+    return box
+
 
 def load_parents(manifest: Path) -> dict[tuple[str, str], dict]:
     """Index the existing manifest by (surface, kind) so a derivative inherits its source's record.
@@ -99,7 +163,12 @@ def digest(path: Path) -> tuple[str, int, bool]:
 
 
 def already_derived(
-    recorded: dict[tuple[str, str, str], dict], surface: str, kind: str, declared: tuple[int, int], target: Path
+    recorded: dict[tuple[str, str, str], dict],
+    surface: str,
+    kind: str,
+    declared: tuple[int, int],
+    target: Path,
+    parent: dict | None,
 ) -> dict | None:
     """The recorded entry, if this derivative is already on disk exactly as the manifest records it.
 
@@ -120,12 +189,54 @@ def already_derived(
     is returned untouched, so re-running is genuinely free and genuinely idempotent.
 
     `--force` is the deliberate way to recut one, and it is deliberately not the default.
+
+    ## AND WHY THE GUARD ALONE WAS NOT ENOUGH — a stale avatar nearly shipped
+
+    The check above answers "is this file the one the manifest recorded", which is not the same
+    question as "is this file cut from the CURRENT source". Re-rolling `site/mark` for the
+    gpt-image-2 candidate and then running this script left `site/org-avatar-1024x1024.png` on
+    disk unchanged: its own checksum still matched its own entry, so it was kept, and the set was
+    one promotion away from serving an organisation avatar cut from a mark that no longer existed
+    anywhere. Nothing failed — `verify.py` passes a stale derivative, because a stale derivative is
+    a perfectly well-formed image with the right size, ground and accent.
+
+    So the source is now compared too, by TIME rather than by checksum. Both entries already carry
+    `generatedAt` — the parent's is when the model returned the image, the derivative's is when
+    Pillow cut it — and a derivative that predates its own source is stale by definition. No new
+    manifest field, no schema migration, and it reads correctly on every set already on disk,
+    including the reference one. A checksum of the source would have been the obvious answer and
+    is the wrong one here: it is not recorded on the derivative, so adding it would either force a
+    recut of all 42 derivatives to acquire the field — which is exactly the silent rewrite this
+    guard exists to prevent — or be back-filled from the current source, which would bless the
+    stale file rather than catch it.
+
+    Encoder drift and a changed source both produce "the bytes differ"; only the timestamps tell
+    them apart, which is why the drift case still keeps its file and this case does not.
     """
     entry = recorded.get((surface, kind, f"{declared[0]}x{declared[1]}"))
     if entry is None or not target.exists():
         return None
     sha, _, _ = digest(target)
-    return entry if sha == entry["sha256"] else None
+    if sha != entry["sha256"]:
+        return None
+    if parent and _cut_before(entry, parent):
+        return None
+    return entry
+
+
+def _cut_before(derivative: dict, parent: dict) -> bool:
+    """Was this derivative cut before the source it claims to come from was generated?
+
+    Missing or unparseable timestamps answer False — "cannot prove it is stale". The guard's
+    default has to stay "keep what is on record", because the alternative default rewrites a
+    permanent set on the strength of a field that was not there.
+    """
+    try:
+        cut = datetime.fromisoformat(derivative["generatedAt"].replace("Z", "+00:00"))
+        made = datetime.fromisoformat(parent["generatedAt"].replace("Z", "+00:00"))
+    except (KeyError, ValueError, AttributeError):
+        return False
+    return cut < made
 
 
 def entry(
@@ -149,7 +260,12 @@ def entry(
         "requestedSize": parent["requestedSize"],
         "deliveredSize": f"{delivered[0]}x{delivered[1]}",
         "sizing": "exact" if tuple(delivered) == declared else "unsized",
-        "cropped": kind.startswith("og"),
+        # The OG card is a centre crop of its as-delivered source, and the avatar is a centre crop
+        # of the mark scaled back up. `avatar` is named here rather than folded into a prefix test
+        # because the shipped entry has read `cropped: true` since it was cut by hand, and a
+        # recipe that reproduced the file while contradicting its own record would be worse than
+        # no recipe at all.
+        "cropped": kind.startswith("og") or kind == AVATAR_KIND,
         "derivedFrom": str(source.relative_to(root)),
         "backend": parent["backend"],
         "model": parent["model"],
@@ -168,6 +284,56 @@ def entry(
     }
 
 
+def resample_one(source: Path, target: Path, size: tuple[int, int]) -> dict:
+    """Lanczos one file down to one size and report what the result measures. Nothing else.
+
+    ## Why this mode exists, and why it is here rather than in generate.ts
+
+    Some endpoints refuse to generate at a size this set declares. gpt-image-2 has a minimum pixel
+    budget — measured, by bisection, to sit in (524288, 655360] — which the 1024x384 wordmark and
+    the 512x512 favicon both fall under, so those two are generated at an exact multiple of the
+    same aspect ratio (1536x576 and 1024x1024, both probed) and cut DOWN to the declared size.
+
+    The pixels have to move in Pillow, for the same reason every other resample in this repository
+    does: `studio/src/sizing.ts` measures and deliberately does not resample, because doing it in
+    pure TypeScript is a PNG decoder, a filter reconstructor, a resampler and an encoder, and doing
+    it with `sharp` is a native dependency in a repository that has none. And Pillow rather than
+    macOS `sips` — design-system.md §7 item 3 names `sips` as the reason the estate's
+    post-processing stage exists on exactly one laptop.
+
+    It is in THIS file rather than in a new shared module because `derive.py` is already the
+    per-repository Pillow tool and is already listed under `shared.perRepository` in providers.json.
+    A new `resample.py` would have to go in `shared.acrossAllThree`, which claims.py validates in
+    both directions and which requires every sibling's `shared` block to be byte-identical — a
+    four-repository change to avoid a thirty-line function.
+
+    **This mode never touches the manifest**, on purpose. The caller has the prompt, the model, the
+    attempts and the retry count; this has one source file, one target and one size, so it cannot
+    corrupt a record it does not read. It also does NOT consult `already_derived`: the caller has
+    just paid for these bytes and is writing the asset for the first time.
+    """
+    with Image.open(source) as image:
+        # RGBA before resizing: a palette image resampled in its own mode gives Lanczos nothing to
+        # interpolate between and comes back with the same stair-stepping the downscale was for.
+        resized = image.convert("RGBA").resize(size, Image.LANCZOS)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        resized.save(target, format="PNG", optimize=True)
+    sha, byte_size, c2pa = digest(target)
+    with Image.open(target) as written:
+        measured = written.size
+    return {
+        "sha256": sha,
+        "byteSize": byte_size,
+        # Measured on the bytes written, never inherited from the source. Re-encoding drops the
+        # C2PA chunk, so this is expected to be False even where the native carried one — and it is
+        # reported rather than assumed, because assuming it is the defect this estate shipped once.
+        "c2pa": c2pa,
+        # The caller REFUSES the file if this is not what it asked for. Reported from the file on
+        # disk rather than echoed from the argument, so the check is on the bytes.
+        "size": f"{measured[0]}x{measured[1]}",
+    }
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--provider", default=None, help="provider id from providers.json")
@@ -176,7 +342,22 @@ def main(argv: list[str]) -> int:
         action="store_true",
         help="recut derivatives that are already on record. Rewrites shipped files; see already_derived.",
     )
+    parser.add_argument(
+        "--resample",
+        nargs=3,
+        metavar=("SOURCE", "TARGET", "WxH"),
+        default=None,
+        help="Lanczos SOURCE down to WxH at TARGET and print the result as JSON. Used by "
+        "generate.ts for a provider that refuses to generate at a declared size.",
+    )
     args = parser.parse_args(argv[1:])
+
+    if args.resample:
+        source, target, wanted = args.resample
+        width, height = (int(n) for n in wanted.split("x"))
+        json.dump(resample_one(Path(source), Path(target), (width, height)), sys.stdout)
+        return 0
+
     provider = providers.by_id(args.provider) if args.provider else providers.reference()
 
     root, assets = provider.root, provider.assets
@@ -184,11 +365,13 @@ def main(argv: list[str]) -> int:
     recorded = load_recorded(provider.manifest)
     out: list[dict] = []
 
-    def keep_or_cut(surface: str, kind: str, declared: tuple[int, int], target: Path) -> dict | None:
+    def keep_or_cut(
+        surface: str, kind: str, declared: tuple[int, int], target: Path, parent: dict | None
+    ) -> dict | None:
         """The recorded entry if this derivative is already exactly on record, else None."""
         if args.force:
             return None
-        return already_derived(recorded, surface, kind, declared, target)
+        return already_derived(recorded, surface, kind, declared, target, parent)
 
     if not assets.is_dir():
         # A candidate with nothing generated yet is not an error. It is the normal state of a
@@ -203,7 +386,7 @@ def main(argv: list[str]) -> int:
         og_source = surface_dir / f"og-{OG_SOURCE[0]}x{OG_SOURCE[1]}-asdelivered.png"
         parent = parents.get((surface, "og-source"))
         target = surface_dir / f"og-{OG_DECLARED[0]}x{OG_DECLARED[1]}.png"
-        kept = keep_or_cut(surface, "og", OG_DECLARED, target)
+        kept = keep_or_cut(surface, "og", OG_DECLARED, target, parent)
         if kept is not None:
             out.append(kept)
         elif og_source.exists() and parent:
@@ -235,7 +418,7 @@ def main(argv: list[str]) -> int:
         parent = parents.get((surface, "favicon"))
         for step in FAVICON_STEPS:
             target = surface_dir / f"favicon-{step}x{step}.png"
-            kept = keep_or_cut(surface, "favicon", (step, step), target)
+            kept = keep_or_cut(surface, "favicon", (step, step), target, parent)
             if kept is not None:
                 out.append(kept)
                 continue
@@ -260,12 +443,85 @@ def main(argv: list[str]) -> int:
                 )
             )
 
+        # ---- the org avatar: the site mark with its margins taken in. The `site` surface only.
+        if surface == AVATAR_SURFACE:
+            mark = surface_dir / "mark-1024x1024.png"
+            parent = parents.get((surface, "mark"))
+            target = surface_dir / AVATAR_FILENAME
+            kept = keep_or_cut(surface, AVATAR_KIND, AVATAR_SIZE, target, parent)
+            if kept is not None:
+                # This is the branch the SHIPPED set takes on every run, and it is the reason
+                # adding this recipe cannot rewrite the hand-cut file: the entry is on record, the
+                # checksum on disk still matches it, and the bytes are returned untouched. It was
+                # checked by running the whole file over the reference set and diffing.
+                out.append(kept)
+            elif mark.exists() and parent:
+                with Image.open(mark) as image:
+                    frame_width, frame_height = image.size
+                    left, top, right, bottom = artwork_bbox(image)
+                    artwork = max(right - left, bottom - top)
+                    wanted = frame_width * AVATAR_ARTWORK_FRACTION
+                    scale = wanted / artwork if artwork else 1.0
+                    # Never crop outside the frame, and never bother for a hair. If the model
+                    # already filled the frame past the target, `scale` is <= 1 and the crop side
+                    # would exceed the frame; both cases fall through to a straight copy of the
+                    # mark, which is the honest answer — the avatar IS the mark at that point.
+                    side = min(frame_width, frame_height, round(frame_width / scale))
+                    if scale < AVATAR_MIN_SCALE or side >= frame_width:
+                        crop_note = (
+                            f"The mark already fills {artwork / frame_width:.0%} of its frame, "
+                            f"which is at or past the {AVATAR_ARTWORK_FRACTION:.0%} an avatar "
+                            "wants, so this is the mark re-encoded at the same size and NOTHING "
+                            "was scaled."
+                        )
+                        avatar = image.convert("RGBA")
+                    else:
+                        # Centred on the FRAME, not on the artwork's own bbox. Every prompt in this
+                        # set says "optically centred" and verify.py does not check it, so centring
+                        # on the bbox would silently correct a model that drew off-centre and hide
+                        # exactly the defect criterion 1 is looking for.
+                        offset_x = (frame_width - side) // 2
+                        offset_y = (frame_height - side) // 2
+                        avatar = (
+                            image.convert("RGBA")
+                            .crop((offset_x, offset_y, offset_x + side, offset_y + side))
+                            .resize(AVATAR_SIZE, Image.LANCZOS)
+                        )
+                        crop_note = (
+                            f"Centre-cropped to {side}x{side} and Lanczos-scaled back to "
+                            f"{AVATAR_SIZE[0]}x{AVATAR_SIZE[1]} — an UPSCALE of "
+                            f"{frame_width / side:.2f}x. It is the only upscale in this "
+                            "repository and it is stated rather than implied: an avatar is the "
+                            "mark with its margins taken in, and there is no larger source to "
+                            "take them in from. The mark's artwork measured "
+                            f"{artwork}px inside a {frame_width}px frame and an avatar wants "
+                            f"{AVATAR_ARTWORK_FRACTION:.0%} of it."
+                        )
+                    avatar.save(target, format="PNG", optimize=True)
+                out.append(
+                    entry(
+                        parent,
+                        root=root,
+                        kind=AVATAR_KIND,
+                        path=target,
+                        declared=AVATAR_SIZE,
+                        source=mark,
+                        note=(
+                            f"{crop_note} The org profile picture, cut from this provider's OWN "
+                            "mark so the avatar and the mark are the same drawing rather than two "
+                            "answers to one brief. Re-encoding drops the C2PA chunk; the invisible "
+                            "pixel watermark is unaffected and the 1024 mark is kept beside this "
+                            "file. social/ holds the resamples of it that the platforms want."
+                        ),
+                    )
+                )
+
         # ---- the currency icon: 256 resampled from the 1024 mark. Currency surfaces only.
         if surface in ICON_SURFACES:
             mark = surface_dir / "mark-1024x1024.png"
             parent = parents.get((surface, "mark"))
             target = surface_dir / f"icon-{ICON_STEP}x{ICON_STEP}.png"
-            kept = keep_or_cut(surface, "icon", (ICON_STEP, ICON_STEP), target)
+            kept = keep_or_cut(surface, "icon", (ICON_STEP, ICON_STEP), target, parent)
             if kept is not None:
                 out.append(kept)
             elif mark.exists() and parent:
