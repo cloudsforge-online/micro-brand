@@ -89,7 +89,7 @@
     "exists' \u2014 and never on `billing.unit`. The units themselves stay unconverted and unadded;",
     "COMPARISON.md \u00a76 states why."
   ],
-  "reference": "flux-2-pro",
+  "reference": "gpt-image-2",
   "$dialects": [
     "Which prompt dialect each set was generated in; the rules themselves are in dialects.json,",
     "read by both dialects.ts and dialects.py. `literal` is the identity transform and is the",
@@ -203,9 +203,9 @@
       "vendor": "Black Forest Labs, served by Azure AI Foundry",
       "adapter": "foundry-serverless",
       "dialect": "literal",
-      "root": ".",
+      "root": "candidates/flux-2-pro",
       "status": "live",
-      "shipped": true,
+      "shipped": false,
       "implemented": true,
       "concurrency": 3,
       "env": {
@@ -233,9 +233,9 @@
       "vendor": "OpenAI, served by Azure AI Foundry (AIServices S0, Sweden Central)",
       "adapter": "openai-images",
       "dialect": "literal",
-      "root": "candidates/gpt-image-2",
+      "root": ".",
       "status": "live",
-      "shipped": false,
+      "shipped": true,
       "implemented": true,
       "concurrency": 1,
       "env": {
