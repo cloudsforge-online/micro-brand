@@ -1,6 +1,6 @@
 {
   "$comment": "The generation plan: what the NEXT reference run would send, derived from plan.ts and prompts.ts and written before a single generation is paid for. It is NOT a record of what was sent — that is MANIFEST.json, per provider, and it is the manifests that verify.py compares for prompt parity. Do not edit by hand; it is regenerated, which is the point.",
-  "generatedAt": "2026-08-14T07:05:55.941Z",
+  "generatedAt": "2026-08-16T15:02:31.318Z",
   "referenceProvider": "flux-2-pro",
   "total": 56,
   "assets": [

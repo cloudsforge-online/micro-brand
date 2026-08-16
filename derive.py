@@ -163,7 +163,12 @@ def digest(path: Path) -> tuple[str, int, bool]:
 
 
 def already_derived(
-    recorded: dict[tuple[str, str, str], dict], surface: str, kind: str, declared: tuple[int, int], target: Path
+    recorded: dict[tuple[str, str, str], dict],
+    surface: str,
+    kind: str,
+    declared: tuple[int, int],
+    target: Path,
+    parent: dict | None,
 ) -> dict | None:
     """The recorded entry, if this derivative is already on disk exactly as the manifest records it.
 
@@ -184,12 +189,54 @@ def already_derived(
     is returned untouched, so re-running is genuinely free and genuinely idempotent.
 
     `--force` is the deliberate way to recut one, and it is deliberately not the default.
+
+    ## AND WHY THE GUARD ALONE WAS NOT ENOUGH — a stale avatar nearly shipped
+
+    The check above answers "is this file the one the manifest recorded", which is not the same
+    question as "is this file cut from the CURRENT source". Re-rolling `site/mark` for the
+    gpt-image-2 candidate and then running this script left `site/org-avatar-1024x1024.png` on
+    disk unchanged: its own checksum still matched its own entry, so it was kept, and the set was
+    one promotion away from serving an organisation avatar cut from a mark that no longer existed
+    anywhere. Nothing failed — `verify.py` passes a stale derivative, because a stale derivative is
+    a perfectly well-formed image with the right size, ground and accent.
+
+    So the source is now compared too, by TIME rather than by checksum. Both entries already carry
+    `generatedAt` — the parent's is when the model returned the image, the derivative's is when
+    Pillow cut it — and a derivative that predates its own source is stale by definition. No new
+    manifest field, no schema migration, and it reads correctly on every set already on disk,
+    including the reference one. A checksum of the source would have been the obvious answer and
+    is the wrong one here: it is not recorded on the derivative, so adding it would either force a
+    recut of all 42 derivatives to acquire the field — which is exactly the silent rewrite this
+    guard exists to prevent — or be back-filled from the current source, which would bless the
+    stale file rather than catch it.
+
+    Encoder drift and a changed source both produce "the bytes differ"; only the timestamps tell
+    them apart, which is why the drift case still keeps its file and this case does not.
     """
     entry = recorded.get((surface, kind, f"{declared[0]}x{declared[1]}"))
     if entry is None or not target.exists():
         return None
     sha, _, _ = digest(target)
-    return entry if sha == entry["sha256"] else None
+    if sha != entry["sha256"]:
+        return None
+    if parent and _cut_before(entry, parent):
+        return None
+    return entry
+
+
+def _cut_before(derivative: dict, parent: dict) -> bool:
+    """Was this derivative cut before the source it claims to come from was generated?
+
+    Missing or unparseable timestamps answer False — "cannot prove it is stale". The guard's
+    default has to stay "keep what is on record", because the alternative default rewrites a
+    permanent set on the strength of a field that was not there.
+    """
+    try:
+        cut = datetime.fromisoformat(derivative["generatedAt"].replace("Z", "+00:00"))
+        made = datetime.fromisoformat(parent["generatedAt"].replace("Z", "+00:00"))
+    except (KeyError, ValueError, AttributeError):
+        return False
+    return cut < made
 
 
 def entry(
@@ -318,11 +365,13 @@ def main(argv: list[str]) -> int:
     recorded = load_recorded(provider.manifest)
     out: list[dict] = []
 
-    def keep_or_cut(surface: str, kind: str, declared: tuple[int, int], target: Path) -> dict | None:
+    def keep_or_cut(
+        surface: str, kind: str, declared: tuple[int, int], target: Path, parent: dict | None
+    ) -> dict | None:
         """The recorded entry if this derivative is already exactly on record, else None."""
         if args.force:
             return None
-        return already_derived(recorded, surface, kind, declared, target)
+        return already_derived(recorded, surface, kind, declared, target, parent)
 
     if not assets.is_dir():
         # A candidate with nothing generated yet is not an error. It is the normal state of a
@@ -337,7 +386,7 @@ def main(argv: list[str]) -> int:
         og_source = surface_dir / f"og-{OG_SOURCE[0]}x{OG_SOURCE[1]}-asdelivered.png"
         parent = parents.get((surface, "og-source"))
         target = surface_dir / f"og-{OG_DECLARED[0]}x{OG_DECLARED[1]}.png"
-        kept = keep_or_cut(surface, "og", OG_DECLARED, target)
+        kept = keep_or_cut(surface, "og", OG_DECLARED, target, parent)
         if kept is not None:
             out.append(kept)
         elif og_source.exists() and parent:
@@ -369,7 +418,7 @@ def main(argv: list[str]) -> int:
         parent = parents.get((surface, "favicon"))
         for step in FAVICON_STEPS:
             target = surface_dir / f"favicon-{step}x{step}.png"
-            kept = keep_or_cut(surface, "favicon", (step, step), target)
+            kept = keep_or_cut(surface, "favicon", (step, step), target, parent)
             if kept is not None:
                 out.append(kept)
                 continue
@@ -399,7 +448,7 @@ def main(argv: list[str]) -> int:
             mark = surface_dir / "mark-1024x1024.png"
             parent = parents.get((surface, "mark"))
             target = surface_dir / AVATAR_FILENAME
-            kept = keep_or_cut(surface, AVATAR_KIND, AVATAR_SIZE, target)
+            kept = keep_or_cut(surface, AVATAR_KIND, AVATAR_SIZE, target, parent)
             if kept is not None:
                 # This is the branch the SHIPPED set takes on every run, and it is the reason
                 # adding this recipe cannot rewrite the hand-cut file: the entry is on record, the
@@ -472,7 +521,7 @@ def main(argv: list[str]) -> int:
             mark = surface_dir / "mark-1024x1024.png"
             parent = parents.get((surface, "mark"))
             target = surface_dir / f"icon-{ICON_STEP}x{ICON_STEP}.png"
-            kept = keep_or_cut(surface, "icon", (ICON_STEP, ICON_STEP), target)
+            kept = keep_or_cut(surface, "icon", (ICON_STEP, ICON_STEP), target, parent)
             if kept is not None:
                 out.append(kept)
             elif mark.exists() and parent:

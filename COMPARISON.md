@@ -1089,3 +1089,162 @@ has not (§11.2), by one pair of eyes that got `currency-ember` backwards on the
 to write the correction into §11.3. The measurements are reproducible on demand and the by-eye
 scoring is not. Where the two disagree — and in this section they disagree more than in any other —
 the tables are what can be checked and the prose is what has to be argued with.
+
+## 12. The repair run, and the promotion §11.5 argued against
+
+§11.5 recommended against promoting gpt-image-2, named exactly what would change its mind, and then
+said the change was not going to be attempted:
+
+> a targeted regeneration of `site/mark` — one image, roughly 5,000 output image tokens and under
+> two minutes — is all that stands between this set and a genuine argument for promotion. That was
+> not done for this evaluation on purpose: **re-rolling the one asset that failed, and only that
+> one, until it passes is how a comparison stops measuring a model and starts measuring the patience
+> of the person running it.**
+
+**It has now been done, deliberately and as a separate act from the evaluation**, which is why it is
+a new section rather than an edit to §11. §11 is the comparison and it still says what it said. This
+section is the repair, and it reverses §11.5's recommendation.
+
+### 12.1 What was actually done to the candidate, in full
+
+Two things, and only the first is a re-roll.
+
+**Two assets were regenerated. Not thirty-seven, not the whole set.**
+
+| asset | draws | why it stopped there |
+| --- | ---: | --- |
+| `site/mark@1024x1024` | 1 | Draw 2 came back a tapered flame curling over the bowed arc. §11.5's complaint — "a chamfered octagon with a notch … it reads as a shield or a gem" — does not describe it, so there was nothing left to re-roll for. |
+| `hub/social@1280x640` | 3 | Draws 2 and 3 both came back at **0.07%** and **0.10%** accent against a 0.5% floor, worse than draw 1's 0.32%. Draw 4 passes at **1.38%**. Four draws is where this stopped, and §12.3 is the part of that outcome worth arguing with. |
+
+Everything else that changed changed for one reason: **the candidate had never been ground-normalised
+at all**, and §11.2 spent a page explaining why the ground row could not be read as a model
+comparison because of it. It can be read now.
+
+- The reference measured 98 of 98 grounds at exactly `#12100f`. The candidate measured **0 of 98**,
+  with delivered grounds running `#090606` to `#0d0c0b` — every one of them *darker* than the ash
+  value, which is why `verify.py`'s luma **ceiling** passed all 98 and nothing complained for the
+  whole life of the branch.
+- The cost of not noticing would not have been subtle. `materialise.py` copies these files onto
+  seventeen web surfaces that set `--cf-bg` to `#12100f` in CSS, so every mark, favicon, OG card and
+  social banner in the estate would have sat in a visibly darker square on a page whose own
+  background is the value the artwork was supposed to be drawn on.
+- The repair is the repository's own tool and nothing else: `normalise_ground.py`, run once over the
+  candidate tree, 98 checksums re-recorded. The artwork is untouched — the script rewrites
+  near-ground pixels only.
+
+`brand/normalise_ground.py` is **not** the script of the same name in the three sibling repositories,
+and finding that out cost a full revert of the reference set. It takes no `--provider`, resolves
+`assets/` and `MANIFEST.json` relative to the **current working directory**, walks every png
+including derivatives, and is **not idempotent** — a second full pass over an already-normalised tree
+remapped a further 148 pixels and shrank `worlds/wordmark` from 32,252 to 30,707 bytes. Point it at a
+candidate with `cd candidates/<id> && python3 ../../normalise_ground.py`, run it once, and because it
+normalises derivatives in place the order here is **derive then normalise**, which is the opposite of
+the order the sibling repositories need.
+
+### 12.2 A defect the candidate gates could not see: a derivative cut from a mark that no longer exists
+
+Re-rolling `site/mark` and re-running `derive.py` left `site/org-avatar-1024x1024.png` **unchanged on
+disk** — still the avatar cut from the superseded octagon, still passing every check, still recorded
+in the manifest as current. `already_derived` compared the derivative to its own recorded checksum,
+found them equal, and kept it. Nothing in the set was in a position to notice, because the stale file
+was internally consistent; only its *source* had moved.
+
+`derive.py` now compares the source too, by time rather than by checksum: a derivative whose
+`generatedAt` predates its parent's is re-cut. Missing or unparseable timestamps answer "cannot prove
+it is stale" and keep the file, so the guard can only ever cause extra work, never silent loss. Both
+sets were re-derived after the fix: 42 entries each, **zero rewrites** beyond the one avatar, which
+is the result that says the guard is narrow.
+
+This would have shipped the company's GitHub organisation avatar as a mark the company had already
+rejected. It is the second finding in this run of the same shape as §11.5's `promote.py` discovery —
+**a candidate can pass every gate and still be wrong in a way only promotion or execution reveals** —
+and it is worth stating plainly that both were found by running things rather than by reading them.
+
+### 12.3 What the four draws of `hub/social` actually show, including the part that is not flattering
+
+The honest reading of draw 4 is not "the model got it right on the fourth try".
+
+All four draws put the Forge Hub ridge in **bone**, not in ember, with a small solid ember spark
+above the middle peak. Draws 1–3 failed the accent floor because a spark alone is not 0.5% of a
+1280×640 field. Draw 4 passes at 1.38% because its ridge and its type are drawn in a *warmer* bone —
+`#ede1d0` is the median of the pixels the check counted — not because the ridge became ember. **The
+gate went green on a colour decision the gate was not written to have an opinion about.**
+
+Whether that is a defect depends on which text is authoritative, and it is worth noticing that the
+model has the better claim. `plan.ts` says: *"the **ash** ridge drawn as one jagged skyline of four
+straight segments … with a single solid **ember** spark held centred in the empty space directly
+above its middle peak."* An ash-coloured ridge under an ember spark is that sentence. The reference's
+all-ember ridge is prettier and is not that sentence. The same reading holds across the kind: on the
+eight social cards and eleven OG cards the challenger draws each surface's mark in **its own registry
+accent** — amber for `create`, blue for `foresight`, violet for `market`, teal for `trade`, green for
+`worlds` — and `hub` is the one surface whose brief names a colour for the mark that is not its
+accent.
+
+So this section does not claim the challenger won `hub/social`. It records that the asset now clears
+the floor, that it clears it for a reason the floor does not measure, and that **anyone who wants the
+reference's reading should say so in `plan.ts`, where the disagreement actually lives, rather than in
+the accent floor.**
+
+### 12.4 What `compare.py` says now, against the same reference, on the same 98 assets
+
+Re-run in full after the two re-rolls and the normalisation. Winners in bold.
+
+| | FLUX 2 Pro | gpt-image-2 |
+| --- | ---: | ---: |
+| below the accent floor | **0** | **0** |
+| third hue dominating | **0** | **0** |
+| accent hue error: mean deg | 8.4 | **2.6** |
+| accent hue error: SPREAD | 6.9 | **2.6** |
+| accent lightness: SPREAD | 0.108 | **0.044** |
+| ink coverage spread (in-kind) | 0.0233 | **0.0227** |
+| ground luma spread | 0.0050 | **0.0000** |
+| median contrast retained at 32px | 83% | **90%** |
+| median contrast retained at 16px | 53% | **68%** |
+| marks under 50% at 16px | 11 | **7** |
+
+Two rows carry the weight.
+
+**The ground row is now a real comparison and it was not one before.** Both sets have had the same
+post-process from the same script; §11.2's confound is discharged rather than argued around.
+
+**The legibility rows are the reason this set promotes and its three siblings do not.** In
+`emberkin-assets` and `aetherholm-assets` the challenger's outline register costs it the 16px table
+outright — 13 marks under the half-way line against 9, and 37 against 8. Here the register goes the
+other way: the challenger's marks are *solid* and it is the reference that hollows out, 7 under the
+line against 11, with 15 points more contrast retained at the size a favicon is actually seen at.
+**The same model, the same setting, the same literal dialect, and the opposite result on the one
+criterion that decided all four repositories.** That is a fact about the briefs, not about the model,
+and it is the most useful thing this run found.
+
+### 12.5 Verdict: promote, and what promoting costs
+
+**gpt-image-2 is promoted to `assets/` and flux-2-pro is demoted to `candidates/flux-2-pro/`.**
+`verify.py --provider gpt-image-2 --as-shipped` reports **0 failures** with conformance and
+completeness held fatal, every measured criterion §2 fixed in advance now favours the challenger, and
+§11.5's single named blocker is a flame over an anvil face.
+
+**What is worse after the switch, stated here rather than left to be found.**
+
+1. **The wordmark type.** Nine names spelled correctly against the reference's eight, in a squared
+   techno face with wide, uneven tracking that is further from the estate's own type than the
+   reference's rounded geometric sans, with the mark component set noticeably small beside it. §11.5
+   scored this a split and nothing in the repair run changed it. It is the largest standing cost of
+   this promotion and it is a typography objection, not a measurement.
+2. **`hub/social`'s bone ridge**, per §12.3.
+3. **Six web repositories are carrying brand chrome that nothing compares.** `sync-chrome.py --dry-run`
+   against the *reference* set reports 23 files that would be replaced — favicons and marks in
+   `hub-web`, `lantern-web`, `site`, `status-web`, `web-template` and one more that have been stale
+   since before this trial began. The promotion does not cause that and does not fix it; the sync
+   does, and it is a separate act with a separate diff.
+
+**The switch is one variable and it is reversible in both directions.** `providers.json`'s
+`reference` names the shipped set; `promote.py` moves five lines of it and vacates the outgoing set
+into `candidates/flux-2-pro/` rather than deleting it; the round trip was executed twice during §11
+and `assets/` came back byte-identical both times under one sha256 over the whole tree.
+`python3 promote.py --provider flux-2-pro` puts it back, today or in a year.
+
+**And the limit that has not moved.** This is still one run at one setting on one brief, judged by
+one pair of eyes, and §11.5's admission stands: the tables are what can be checked and the prose is
+what has to be argued with. What §12 adds is that two of §11's tables were measuring a missing
+post-process rather than a model, and that the one asset §11.5 said would decide it was decided by
+looking at it.
